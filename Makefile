@@ -1,45 +1,39 @@
-SHELL := cmd.exe
-.SHELLFLAGS := /c
-
 # Compiler and flags
 CC       := C:\ProgramData\mingw64\mingw64\bin\gcc.exe
-CFLAGS   := -Wall -Wextra -Werror -std=c11 -Iinclude
-LDFLAGS  := 
+CFLAGS = -Wall -Wextra -Werror -std=c11 -O2 -I.
+LDFLAGS =
 
-# Directories
-SRC_DIR  := src
-BUILD_DIR:= build
-BIN_DIR  := bin
+SRCDIR = src
+OBJDIR = obj
+BINDIR = bin
 
-# Target executable name
-TARGET   := $(BIN_DIR)/raya.exe
+SOURCES = $(wildcard $(SRCDIR)/*.c)
+OBJECTS = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
+TARGET = $(BINDIR)/raya
 
-# Source and object files
-SRCS     := $(wildcard $(SRC_DIR)/*.c)
-OBJS     := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
+.PHONY: all clean test dirs
 
-# Default target
-all: $(TARGET)
+all: dirs $(TARGET)
 
-# Link object files into executable
-$(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+dirs:
+	@mkdir -p $(OBJDIR) $(BINDIR)
 
-# Compile C source files into object files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TARGET): $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $@ $^
 
-# Create output directories if they don't exist
-$(BUILD_DIR) $(BIN_DIR):
-	if not exist "$@" mkdir "$@"
+$(OBJDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Run the built application
-run: all
-	@.\$(BIN_DIR)\raya.exe
-
-# Clean build artifacts
 clean:
-	if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)
-	if exist $(BIN_DIR) rmdir /s /q $(BIN_DIR)
+	rm -rf $(OBJDIR) $(BINDIR)
 
-.PHONY: all run clean
+test: all
+	@echo "Running lexer tests..."
+	@for f in tests/lexer/*.raya; do \
+		echo "  $$f"; \
+		$(TARGET) --dump-tokens "$$f" > /dev/null 2>&1 && echo "    PASS" || echo "    FAIL"; \
+	done
+
+debug: CFLAGS = -Wall -Wextra -std=c11 -g -fsanitize=address -I.
+debug: LDFLAGS = -fsanitize=address
+debug: all
