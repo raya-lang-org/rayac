@@ -2,6 +2,10 @@
 
 #define ARENA_DEFAULT_CAPACITY (1024 * 1024)
 
+void arena_set(Arena* arena) {
+    arena->used = 0;
+}
+
 static bool is_power_of_two(size_t x) {
     return x != 0 && (x & (x - 1)) == 0;
 }

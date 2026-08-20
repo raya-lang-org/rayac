@@ -280,22 +280,33 @@ AstNode* parser_parse_expr_bp(Parser* p, int min_bp) {
     return left;
 }
 
+static void* arena_grow_array(Arena* arena, void* old_ptr, size_t old_count, size_t* cap, size_t elem_size) {
+    size_t new_cap = (*cap == 0) ? 16 : (*cap * 2);
+    void* new_ptr = arena_alloc(arena, new_cap * elem_size);
+    if (old_ptr && old_count > 0) {
+        memcpy(new_ptr, old_ptr, old_count * elem_size);
+    }
+    *cap = new_cap;
+    return new_ptr;
+}
+
+
 AstNode* parser_parse_block(Parser* p) {
     SourceLocation loc = parser_peek(p, 0)->loc;
     parser_expect(p, TOK_LBRACE, "Expected '{' to start block");
 
     size_t count = 0;
-    size_t cap = 8;
+    size_t cap = 16; // Pre-allocate larger default size
     AstNode** stmts = arena_alloc(p->arena, cap * sizeof(AstNode*));
 
-    while (!parser_check(p, TOK_RBRACE) && !parser_at_end(p)) {
+    while (p->pos < p->count) {
+        TokenKind k = p->tokens[p->pos].kind;
+        if (k == TOK_RBRACE || k == TOK_EOF) break;
+
         AstNode* stmt = parser_parse_stmt(p);
         if (stmt) {
             if (count >= cap) {
-                cap *= 2;
-                AstNode** new_stmts = arena_alloc(p->arena, cap * sizeof(AstNode*));
-                memcpy(new_stmts, stmts, count * sizeof(AstNode*));
-                stmts = new_stmts;
+                stmts = arena_grow_array(p->arena, stmts, count, &cap, sizeof(AstNode*));
             }
             stmts[count++] = stmt;
         }
@@ -308,6 +319,7 @@ AstNode* parser_parse_block(Parser* p) {
     block->as.block.stmt_count = count;
     block->as.block.trailing_expr = NULL;
     return block;
+
 }
 
 static AstNode* parser_parse_match_stmt(Parser* p) {
@@ -356,6 +368,20 @@ static AstNode* parser_parse_match_stmt(Parser* p) {
 
 AstNode* parser_parse_stmt(Parser* p) {
     SourceLocation loc = parser_peek(p, 0)->loc;
+
+    if (parser_match(p, TOK_IF)) {
+        AstNode* cond = parser_parse_expr_bp(p, 0);
+        AstNode* then_block = parser_parse_block(p);
+        AstNode* else_stmt = NULL;
+        if (parser_match(p, TOK_ELSE)) {
+            if (parser_check(p, TOK_IF)) {
+                else_stmt = parser_parse_stmt(p);
+            } else {
+                else_stmt = parser_parse_block(p);
+            }
+        }
+        return ast_new_if(cond, then_block, else_stmt, loc);
+    }
 
     if (parser_match(p, TOK_VAR)) {
         const Token* id = parser_expect(p, TOK_IDENTIFIER, "Expected identifier after 'var'");
@@ -424,6 +450,27 @@ AstNode* parser_parse_stmt(Parser* p) {
 }
 
 AstNode* parser_parse(Parser* p) {
-    SourceLocation loc = parser_peek(p, 0)->loc;
-    return ast_new_module_decl((StringView){.data = "main", .len = 4}, loc);
-}
+   SourceLocation loc = parser_peek(p, 0)->loc;
+
+    size_t count = 0;
+    size_t cap = 64; // High capacity for top-level module decls
+    AstNode** decls = arena_alloc(p->arena, cap * sizeof(AstNode*));
+
+    while (p->pos < p->count && p->tokens[p->pos].kind != TOK_EOF) {
+        AstNode* stmt = parser_parse_stmt(p);
+        if (stmt) {
+            if (count >= cap) {
+                decls = arena_grow_array(p->arena, decls, count, &cap, sizeof(AstNode*));
+            }
+            decls[count++] = stmt;
+        } else {
+            parser_advance(p);
+        }
+    }
+
+    AstNode* module = ast_new_module_decl((StringView){.data = "main", .len = 4}, loc);
+    module->as.module_decl.decl = decls;
+    module->as.module_decl.decl_count = count;
+
+    return module;
+} 

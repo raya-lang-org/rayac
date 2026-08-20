@@ -20,6 +20,8 @@ char* arena_strdup(Arena* a, const char* s);
 char* arena_strndup(Arena* a, const char* s, size_t n);
 void arena_reset(Arena* a);
 void arena_free_all(Arena* a);
+void arena_set(Arena* arena);
+
 
 #define arena_alloc_n(a, T, n) ((T*)arena_alloc_aligned((a), sizeof(T) * (n), alignof(T)))
 

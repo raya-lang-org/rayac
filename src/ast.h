@@ -169,7 +169,7 @@ struct AstNode {
     AstNodeKind kind;
     SourceLocation loc;
     union {
-        struct { StringView name; } module_decl;
+        struct { StringView name; AstNode** decl; size_t decl_count; } module_decl;
         struct { StringView name; StringView* parts; size_t part_count; StringView alias; bool has_alias; } import_decl;
         struct {
             StringView name;
