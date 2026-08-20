@@ -4,6 +4,7 @@
 #include "common.h"
 #include "string_view.h"
 #include "type.h"
+#include "arena.h"
 
 typedef struct Symbol Symbol;
 typedef struct Scope Scope;
@@ -27,7 +28,7 @@ typedef enum {
 struct Symbol {
     SymbolKind kind;
     StringView name;
-    SemaType *type;
+    SType *type;
     struct AstNode *decl;
     Symbol *next;
     bool is_pub;
@@ -48,6 +49,6 @@ Symbol *scope_lookup(Scope *s, StringView name);
 Symbol *scope_lookup_current(Scope *s, StringView name);
 void scope_insert(Arena *arena, Scope *s, Symbol *sym);
 
-Symbol *symbol_new(Arena *arena, SymbolKind kind, StringView name, SemaType *type, struct AstNode *decl);
+Symbol *symbol_new(Arena *arena, SymbolKind kind, StringView name, SType *type, struct AstNode *decl);
 
 #endif

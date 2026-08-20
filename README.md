@@ -4,6 +4,28 @@ Raya Compiler (rayac) — Phase 0 & 2 Complete
     Repo: https://github.com/raya-lang-org/rayac
     Lead: You | Engine: Kimi (Moonshot AI)
 
+
+| Feature                                               | Status                   |
+| ----------------------------------------------------- | ------------------------ |
+| Symbol tables (module + function + block scopes)      | ✅                        |
+| Primitive type canonicalization (i32, f64, etc.)      | ✅                        |
+| Composite types from AST (\*T, \&T, \[]T, ?T, !T, fn) | ✅                        |
+| Undeclared identifier errors                          | ✅                        |
+| Binary expression type checking (+, -, ==, etc.)      | ✅                        |
+| Prefix operators (&, \*, -, !, ~)                     | ✅                        |
+| Return type checking                                  | ✅                        |
+| Variable declaration + inference                      | ✅                        |
+| if/while/for/defer/break/continue                     | ✅                        |
+| as casts, try, unsafe blocks                          | ✅                        |
+| Generic params (stub)                                 | ✅                        |
+| Self parameter resolution                             | ⏳ (needs struct context) |
+| Struct/union/enum body checking                       | ⏳                        |
+| Trait checking / extend validation                    | ⏳                        |
+| Generic monomorphization                              | ⏳                        |
+| Comptime evaluation                                   | ⏳                        |
+| Method call / field access type checking              | ⏳                        |
+
+
 Quick Start
 bash
 

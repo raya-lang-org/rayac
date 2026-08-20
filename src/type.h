@@ -3,11 +3,9 @@
 
 #include "common.h"
 #include "string_view.h"
+#include "arena.h"
 
-// Forward-declare AST types to avoid including ast.h
-struct AstNode;
-
-typedef struct SemaType SemaType;
+typedef struct SType SType;
 typedef struct TypeField TypeField;
 
 typedef enum {
@@ -29,35 +27,36 @@ typedef enum {
     ST_TRAIT,
     ST_GENERIC_PARAM,
     ST_OPAQUE,
-} SemaTypeKind;
+} STypeKind;
 
 struct TypeField {
     StringView name;
-    SemaType *type;
+    SType *type;
     struct AstNode *default_value;
 };
 
-struct SemaType {
-    SemaTypeKind kind;
+struct SType {
+    STypeKind kind;
     uint32_t hash;
+    SType *next_hash;   /* chaining for canonical type table */
     union {
         struct { bool is_signed; uint8_t bits; } integer;
         struct { uint8_t bits; } floating;
-        struct { bool is_const; SemaType *base; } pointer;
-        struct { bool is_const; SemaType *base; } reference;
-        struct { bool is_const; SemaType *base; } slice;
-        struct { uint64_t size; SemaType *base; } array;
-        struct { SemaType *base; } optional;
-        struct { SemaType *base; } error_union;
+        struct { bool is_const; SType *base; } pointer;
+        struct { bool is_const; SType *base; } reference;
+        struct { bool is_const; SType *base; } slice;
+        struct { uint64_t size; SType *base; } array;
+        struct { SType *base; } optional;
+        struct { SType *base; } error_union;
         struct {
-            SemaType **params;
+            SType **params;
             size_t param_count;
-            SemaType *ret;
+            SType *ret;
             bool is_variadic;
         } function;
         struct {
             StringView name;
-            SemaType **generic_args;
+            SType **generic_args;
             size_t generic_arg_count;
             TypeField *fields;
             size_t field_count;
@@ -77,7 +76,7 @@ struct SemaType {
         } enum_;
         struct {
             StringView name;
-            SemaType **required_methods;
+            SType **required_methods;
             size_t method_count;
         } trait;
         struct {
@@ -90,27 +89,27 @@ struct SemaType {
 typedef struct TypeTable TypeTable;
 
 TypeTable *type_table_new(Arena *arena);
-SemaType *st_void(TypeTable *tt);
-SemaType *st_bool(TypeTable *tt);
-SemaType *st_int(TypeTable *tt, bool is_signed, uint8_t bits);
-SemaType *st_float(TypeTable *tt, uint8_t bits);
-SemaType *st_pointer(TypeTable *tt, bool is_const, SemaType *base);
-SemaType *st_reference(TypeTable *tt, bool is_const, SemaType *base);
-SemaType *st_slice(TypeTable *tt, bool is_const, SemaType *base);
-SemaType *st_array(TypeTable *tt, uint64_t size, SemaType *base);
-SemaType *st_optional(TypeTable *tt, SemaType *base);
-SemaType *st_error_union(TypeTable *tt, SemaType *base);
-SemaType *st_function(TypeTable *tt, SemaType **params, size_t pc, SemaType *ret, bool variadic);
+SType *st_void(TypeTable *tt);
+SType *st_bool(TypeTable *tt);
+SType *st_int(TypeTable *tt, bool is_signed, uint8_t bits);
+SType *st_float(TypeTable *tt, uint8_t bits);
+SType *st_pointer(TypeTable *tt, bool is_const, SType *base);
+SType *st_reference(TypeTable *tt, bool is_const, SType *base);
+SType *st_slice(TypeTable *tt, bool is_const, SType *base);
+SType *st_array(TypeTable *tt, uint64_t size, SType *base);
+SType *st_optional(TypeTable *tt, SType *base);
+SType *st_error_union(TypeTable *tt, SType *base);
+SType *st_function(TypeTable *tt, SType **params, size_t pc, SType *ret, bool variadic);
 
-SemaType *st_from_ast(TypeTable *tt, struct AstNode *type_expr);
+SType *st_from_ast(TypeTable *tt, struct AstNode *type_expr);
 
-bool st_eq(SemaType *a, SemaType *b);
-bool st_is_integer(SemaType *t);
-bool st_is_numeric(SemaType *t);
-bool st_is_const_ptr(SemaType *t);
-bool st_can_coerce(SemaType *from, SemaType *to);
+bool st_eq(SType *a, SType *b);
+bool st_is_integer(SType *t);
+bool st_is_numeric(SType *t);
+bool st_is_const_ptr(SType *t);
+bool st_can_coerce(SType *from, SType *to);
 
-const char *st_name(SemaType *t);
-void st_print(SemaType *t);
+const char *st_name(SType *t);
+void st_print(SType *t);
 
 #endif

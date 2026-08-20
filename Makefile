@@ -5,6 +5,9 @@ LDFLAGS  :=
 
 SRCDIR   := src
 OBJDIR   := obj
+SRCS     := src/main.c src/lexer.c src/parser.c src/ast.c src/arena.c src/diag.c \
+            src/type.c src/symbol.c src/sema.c
+
 BINDIR   := bin
 TESTDIR  := tests
 
@@ -83,10 +86,18 @@ test-parser: all
 	done; \
 	echo "Parser: $$passed passed, $$failed failed"
 
-# ============================================================================
-# Run everything
-# ==========================================================================
-test: test-lexer test-parser
+test-sema: $(BIN)
+	@for f in tests/sema/*.raya; do \
+		./$(BIN) --test-sema "$$f" > /tmp/actual.txt 2>&1; \
+		if ! cmp -s /tmp/actual.txt "$${f%.raya}.expected"; then \
+			echo "FAIL: $$f"; \
+		else \
+			echo "PASS: $$f"; \
+		fi; \
+	done
+
+test: test-lexer test-parser test-sema
+
 
 debug: CFLAGS := -Wall -Wextra -std=c11 -g -fsanitize=address -Isrc
 debug: LDFLAGS := -fsanitize=address
