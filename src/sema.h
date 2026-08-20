@@ -8,6 +8,9 @@
 #include "source_loc.h"
 #include "diag.h"
 
+
+typedef struct AstNode AstNode;
+
 typedef struct Sema Sema;
 
 struct Sema {
@@ -22,13 +25,13 @@ struct Sema {
 };
 
 Sema *sema_new(Arena *arena, DiagnosticEngine *diag);
-void sema_run(Sema *s, struct AstNode *module);
+void sema_run(Sema *s, AstNode *module);
 
-SType *sema_check_expr(Sema *s, struct AstNode *expr);
-SType *sema_check_stmt(Sema *s, struct AstNode *stmt);
-SType *sema_check_block(Sema *s, struct AstNode *block);
+SType *sema_check_expr(Sema *s, AstNode *expr);
+SType *sema_check_stmt(Sema *s, AstNode *stmt);
+SType *sema_check_block(Sema *s, AstNode *block);
 
 void sema_report(Sema *s, SourceLocation loc, const char *fmt, ...);
-SType *sema_resolve_type(Sema *s, struct TypeExpr *type_expr);
+SType *sema_resolve_type(Sema *s, TypeExpr *type_expr);
 
 #endif

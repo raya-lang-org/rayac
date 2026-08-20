@@ -5,6 +5,9 @@
 #include "string_view.h"
 #include "arena.h"
 
+typedef struct AstNode AstNode;
+typedef struct TypeExpr TypeExpr;
+
 typedef struct SType SType;
 typedef struct TypeField TypeField;
 
@@ -88,7 +91,7 @@ SType *st_optional(TypeTable *tt, SType *base);
 SType *st_error_union(TypeTable *tt, SType *base);
 SType *st_function(TypeTable *tt, SType **params, size_t pc, SType *ret, bool variadic);
 
-SType *st_from_ast(TypeTable *tt, struct TypeExpr *type_expr);
+SType *st_from_ast(TypeTable *tt, TypeExpr *type_expr);
 
 bool st_eq(SType *a, SType *b);
 bool st_is_integer(SType *t);

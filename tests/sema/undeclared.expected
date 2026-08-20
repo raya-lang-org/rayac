@@ -1,1 +1,2 @@
-error: use of undeclared identifier 'x'
+use of undeclared identifier 'x'
+cannot assign 'i64' to 'void'

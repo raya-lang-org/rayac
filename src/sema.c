@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+static void sema_collect_decls(Sema *s, AstNode *module);
+static void sema_resolve_bodies(Sema *s, AstNode *module);
+static void sema_check_fn_body(Sema *s, AstNode *fn);
+
 Sema *sema_new(Arena *arena, DiagnosticEngine *diag) {
     Sema *s = arena_alloc(arena, sizeof(Sema));
     s->arena = arena;
@@ -157,6 +161,7 @@ SType *sema_resolve_type(Sema *s, TypeExpr *type_expr) {
     if (!type_expr) return st_void(s->types);
     return st_from_ast(s->types, type_expr);
 }
+
 
 SType *sema_check_block(Sema *s, AstNode *block) {
     if (!block) return st_void(s->types);

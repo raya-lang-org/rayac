@@ -86,10 +86,10 @@ test-parser: all
 	done; \
 	echo "Parser: $$passed passed, $$failed failed"
 	
+
 test-sema: all
 	@echo "Running sema tests..."
-	@set -e; \
-	passed=0; failed=0; \
+	@passed=0; failed=0; \
 	for f in $(TESTDIR)/sema/*.raya; do \
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/sema/$$name.expected"; \
@@ -104,16 +104,16 @@ test-sema: all
 			passed=$$((passed + 1)); \
 		else \
 			echo " FAIL $$f"; \
+			echo "  diff expected actual:"; \
+			diff "$$expected" "$$actual" | sed 's/^/    /' || true; \
 			failed=$$((failed + 1)); \
 		fi; \
 		rm -f "$$actual"; \
 	done; \
-	echo "Sema: $$passed passed, $$failed failed"
+	echo "Sema: $$passed passed, $$failed failed"; \
+	if [ $$failed -gt 0 ]; then exit 1; fi
 
 test: test-lexer test-parser test-sema
-
-
-
 
 debug: CFLAGS := -Wall -Wextra -std=c11 -g -fsanitize=address -Isrc
 debug: LDFLAGS := -fsanitize=address
