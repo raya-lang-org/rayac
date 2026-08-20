@@ -1,968 +1,1147 @@
+
 #include "ast.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include "arena.h" 
-/* ============================================================================
- * Arena allocation state & helpers
- * ========================================================================== */
 
-static Arena* g_ast_arena = NULL;
-
-void ast_set_arena(Arena* arena) {
-    g_ast_arena = arena;
-}
-
-void* ast_alloc(size_t size) {
-    if (g_ast_arena) {
-        return arena_alloc(g_ast_arena, size);
+static void* grow_array(Arena* arena, void* old, size_t old_cap, size_t elem_size, size_t new_cap) {
+    void* new_ptr = arena_alloc(arena, new_cap * elem_size);
+    if (old && old_cap > 0) {
+        memcpy(new_ptr, old, old_cap * elem_size);
     }
-    void* ptr = calloc(1, size);
-    if (!ptr) {
-        fprintf(stderr, "Out of memory in ast_alloc\n");
-        exit(1);
+    return new_ptr;
+}
+
+void ast_node_list_init(Arena* arena, AstNodeList* list) {
+    (void)arena;
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+void ast_node_list_push(Arena* arena, AstNodeList* list, AstNode* node) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity ? list->capacity * 2 : 4;
+        list->items = (AstNode**)grow_array(arena, list->items, list->capacity, sizeof(AstNode*), new_cap);
+        list->capacity = new_cap;
     }
-    return ptr;
+    list->items[list->count++] = node;
 }
 
-void* ast_alloc_n(size_t count, size_t size) {
-    return ast_alloc(count * size);
+void type_expr_list_init(Arena* arena, TypeExprList* list) {
+    (void)arena;
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
 }
 
-char* ast_strdup(const char* s) {
-    if (!s) return NULL;
-    size_t len = strlen(s);
-    char* dup = (char*)ast_alloc(len + 1);
-    memcpy(dup, s, len);
-    dup[len] = '\0';
-    return dup;
+void type_expr_list_push(Arena* arena, TypeExprList* list, TypeExpr* type) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity ? list->capacity * 2 : 4;
+        list->items = (TypeExpr**)grow_array(arena, list->items, list->capacity, sizeof(TypeExpr*), new_cap);
+        list->capacity = new_cap;
+    }
+    list->items[list->count++] = type;
 }
 
-static AstNode* alloc_ast_node(AstNodeKind kind, SourceLocation loc) {
-    AstNode* node = (AstNode*)ast_alloc(sizeof(AstNode));
-    node->kind = kind;
-    node->loc = loc;
-    return node;
+void string_view_list_init(Arena* arena, StringViewList* list) {
+    (void)arena;
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
 }
 
-static TypeExpr* alloc_type_expr(TypeExprKind kind, SourceLocation loc) {
-    TypeExpr* type = (TypeExpr*)ast_alloc(sizeof(TypeExpr));
-    type->kind = kind;
-    type->loc = loc;
-    return type;
+void string_view_list_push(Arena* arena, StringViewList* list, StringView sv) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity ? list->capacity * 2 : 4;
+        list->items = (StringView*)grow_array(arena, list->items, list->capacity, sizeof(StringView), new_cap);
+        list->capacity = new_cap;
+    }
+    list->items[list->count++] = sv;
 }
 
-static Pattern* alloc_pattern(PatternKind kind, SourceLocation loc) {
-    Pattern* pat = (Pattern*)ast_alloc(sizeof(Pattern));
-    pat->kind = kind;
-    pat->loc = loc;
-    return pat;
+void pattern_list_init(Arena* arena, PatternList* list) {
+    (void)arena;
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+void pattern_list_push(Arena* arena, PatternList* list, Pattern* pat) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity ? list->capacity * 2 : 4;
+        list->items = (Pattern**)grow_array(arena, list->items, list->capacity, sizeof(Pattern*), new_cap);
+        list->capacity = new_cap;
+    }
+    list->items[list->count++] = pat;
+}
+
+void attribute_list_init(Arena* arena, AttributeList* list) {
+    (void)arena;
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+void attribute_list_push(Arena* arena, AttributeList* list, Attribute attr) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity ? list->capacity * 2 : 4;
+        list->items = (Attribute*)grow_array(arena, list->items, list->capacity, sizeof(Attribute), new_cap);
+        list->capacity = new_cap;
+    }
+    list->items[list->count++] = attr;
+}
+
+#define NEW_NODE(arena, kind_, loc_) \
+    ({ AstNode* _n = (AstNode*)arena_alloc((arena), sizeof(AstNode)); \
+       memset(_n, 0, sizeof(AstNode)); \
+       _n->kind = (kind_); _n->loc = (loc_); _n; })
+
+#define NEW_TYPE(arena, kind_, loc_) \
+    ({ TypeExpr* _t = (TypeExpr*)arena_alloc((arena), sizeof(TypeExpr)); \
+       memset(_t, 0, sizeof(TypeExpr)); \
+       _t->kind = (kind_); _t->loc = (loc_); _t; })
+
+#define NEW_PATTERN(arena, kind_, loc_) \
+    ({ Pattern* _p = (Pattern*)arena_alloc((arena), sizeof(Pattern)); \
+       memset(_p, 0, sizeof(Pattern)); \
+       _p->kind = (kind_); _p->loc = (loc_); _p; })
+
+AstNode* ast_new_compilation_unit(Arena* arena, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_COMPILATION_UNIT, loc);
+    ast_node_list_init(arena, &n->compilation_unit.imports);
+    ast_node_list_init(arena, &n->compilation_unit.decls);
+    return n;
+}
+
+AstNode* ast_new_module_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_MODULE_DECL, loc);
+    n->module_decl.name = name;
+    return n;
+}
+
+AstNode* ast_new_import_decl(Arena* arena, StringView first, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_IMPORT_DECL, loc);
+    string_view_list_init(arena, &n->import_decl.parts);
+    string_view_list_push(arena, &n->import_decl.parts, first);
+    return n;
+}
+
+AstNode* ast_new_fn_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_FN_DECL, loc);
+    n->fn_decl.name = name;
+    ast_node_list_init(arena, &n->fn_decl.generic_params);
+    ast_node_list_init(arena, &n->fn_decl.params);
+    attribute_list_init(arena, &n->fn_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_struct_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_STRUCT_DECL, loc);
+    n->struct_decl.name = name;
+    ast_node_list_init(arena, &n->struct_decl.generic_params);
+    ast_node_list_init(arena, &n->struct_decl.fields);
+    attribute_list_init(arena, &n->struct_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_union_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_UNION_DECL, loc);
+    n->struct_decl.name = name;
+    ast_node_list_init(arena, &n->struct_decl.generic_params);
+    ast_node_list_init(arena, &n->struct_decl.fields);
+    attribute_list_init(arena, &n->struct_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_enum_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_ENUM_DECL, loc);
+    n->enum_decl.name = name;
+    ast_node_list_init(arena, &n->enum_decl.variants);
+    attribute_list_init(arena, &n->enum_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_traits_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_TRAITS_DECL, loc);
+    n->traits_decl.name = name;
+    ast_node_list_init(arena, &n->traits_decl.methods);
+    attribute_list_init(arena, &n->traits_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_extend_decl(Arena* arena, StringView target, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_EXTEND_DECL, loc);
+    n->extend_decl.target_name = target;
+    ast_node_list_init(arena, &n->extend_decl.generic_params);
+    string_view_list_init(arena, &n->extend_decl.trait_names);
+    ast_node_list_init(arena, &n->extend_decl.methods);
+    attribute_list_init(arena, &n->extend_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_type_alias(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_TYPE_ALIAS, loc);
+    n->type_alias.name = name;
+    attribute_list_init(arena, &n->type_alias.attrs);
+    return n;
+}
+
+AstNode* ast_new_const_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_CONST_DECL, loc);
+    n->var_decl.name = name;
+    attribute_list_init(arena, &n->var_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_var_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_VAR_DECL, loc);
+    n->var_decl.name = name;
+    attribute_list_init(arena, &n->var_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_test_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_TEST_DECL, loc);
+    n->test_decl.name = name;
+    attribute_list_init(arena, &n->test_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_field_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_FIELD_DECL, loc);
+    n->field_decl.name = name;
+    attribute_list_init(arena, &n->field_decl.attrs);
+    return n;
+}
+
+AstNode* ast_new_variant_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_VARIANT_DECL, loc);
+    n->variant_decl.name = name;
+    return n;
+}
+
+AstNode* ast_new_trait_method_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_TRAIT_METHOD_DECL, loc);
+    n->trait_method_decl.name = name;
+    ast_node_list_init(arena, &n->trait_method_decl.params);
+    return n;
+}
+
+AstNode* ast_new_param_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_PARAM_DECL, loc);
+    n->param_decl.name = name;
+    return n;
+}
+
+AstNode* ast_new_generic_param_decl(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_GENERIC_PARAM_DECL, loc);
+    n->generic_param_decl.name = name;
+    string_view_list_init(arena, &n->generic_param_decl.trait_constraints);
+    return n;
+}
+
+AstNode* ast_new_block(Arena* arena, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_BLOCK, loc);
+    ast_node_list_init(arena, &n->block.stmts);
+    return n;
+}
+
+AstNode* ast_new_expr_stmt(Arena* arena, AstNode* expr, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_EXPR_STMT, loc);
+    n->expr_stmt.expr = expr;
+    return n;
+}
+
+AstNode* ast_new_return(Arena* arena, AstNode* value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_RETURN_STMT, loc);
+    n->return_stmt.value = value;
+    return n;
+}
+
+AstNode* ast_new_if(Arena* arena, AstNode* cond, AstNode* then_block, AstNode* else_block, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_IF_STMT, loc);
+    n->if_stmt.condition = cond;
+    n->if_stmt.then_block = then_block;
+    n->if_stmt.else_block = else_block;
+    return n;
+}
+
+AstNode* ast_new_while(Arena* arena, AstNode* cond, AstNode* body, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_WHILE_STMT, loc);
+    n->while_stmt.condition = cond;
+    n->while_stmt.body = body;
+    return n;
+}
+
+AstNode* ast_new_for(Arena* arena, StringView var, TypeExpr* type, AstNode* iterable, AstNode* body, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_FOR_STMT, loc);
+    n->for_stmt.var_name = var;
+    n->for_stmt.var_type = type;
+    n->for_stmt.iterable = iterable;
+    n->for_stmt.body = body;
+    return n;
+}
+
+AstNode* ast_new_defer(Arena* arena, AstNode* expr, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_DEFER_STMT, loc);
+    n->defer_stmt.expr = expr;
+    return n;
+}
+
+AstNode* ast_new_errdefer(Arena* arena, AstNode* body, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_ERRDEFER_STMT, loc);
+    n->errdefer_stmt.body = body;
+    return n;
+}
+
+AstNode* ast_new_break(Arena* arena, SourceLocation loc) {
+    return NEW_NODE(arena, AST_BREAK_STMT, loc);
+}
+
+AstNode* ast_new_continue(Arena* arena, SourceLocation loc) {
+    return NEW_NODE(arena, AST_CONTINUE_STMT, loc);
+}
+
+AstNode* ast_new_match(Arena* arena, AstNode* expr, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_MATCH_STMT, loc);
+    n->match_stmt.expr = expr;
+    ast_node_list_init(arena, &n->match_stmt.arms);
+    return n;
+}
+
+AstNode* ast_new_match_arm(Arena* arena, Pattern* pat, AstNode* expr, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_MATCH_ARM, loc);
+    n->match_arm.pattern = pat;
+    n->match_arm.expr = expr;
+    return n;
+}
+
+AstNode* ast_new_assign(Arena* arena, TokenKind op, AstNode* lhs, AstNode* rhs, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_ASSIGN_STMT, loc);
+    n->assign_stmt.op = op;
+    n->assign_stmt.lhs = lhs;
+    n->assign_stmt.rhs = rhs;
+    return n;
+}
+
+AstNode* ast_new_int_literal(Arena* arena, int64_t value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_INT_LITERAL, loc);
+    n->int_literal.value = value;
+    return n;
+}
+
+AstNode* ast_new_float_literal(Arena* arena, double value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_FLOAT_LITERAL, loc);
+    n->float_literal.value = value;
+    return n;
+}
+
+AstNode* ast_new_string_literal(Arena* arena, StringView value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_STRING_LITERAL, loc);
+    n->string_literal.value = value;
+    return n;
+}
+
+AstNode* ast_new_char_literal(Arena* arena, StringView value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_CHAR_LITERAL, loc);
+    n->char_literal.value = value;
+    return n;
+}
+
+AstNode* ast_new_bool_literal(Arena* arena, bool value, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_BOOL_LITERAL, loc);
+    n->bool_literal.value = value;
+    return n;
+}
+
+AstNode* ast_new_null_literal(Arena* arena, SourceLocation loc) {
+    return NEW_NODE(arena, AST_NULL_LITERAL, loc);
+}
+
+AstNode* ast_new_undefined_literal(Arena* arena, SourceLocation loc) {
+    return NEW_NODE(arena, AST_UNDEFINED_LITERAL, loc);
+}
+
+AstNode* ast_new_identifier(Arena* arena, StringView name, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_IDENTIFIER, loc);
+    n->identifier.name = name;
+    return n;
+}
+
+AstNode* ast_new_binary(Arena* arena, TokenKind op, AstNode* left, AstNode* right, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_BINARY_EXPR, loc);
+    n->binary_expr.op = op;
+    n->binary_expr.left = left;
+    n->binary_expr.right = right;
+    return n;
+}
+
+AstNode* ast_new_unary(Arena* arena, TokenKind op, AstNode* operand, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_UNARY_EXPR, loc);
+    n->unary_expr.op = op;
+    n->unary_expr.operand = operand;
+    return n;
+}
+
+AstNode* ast_new_call(Arena* arena, AstNode* callee, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_CALL_EXPR, loc);
+    n->call_expr.callee = callee;
+    ast_node_list_init(arena, &n->call_expr.args);
+    return n;
+}
+
+AstNode* ast_new_method_call(Arena* arena, AstNode* receiver, StringView method, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_METHOD_CALL_EXPR, loc);
+    n->method_call_expr.receiver = receiver;
+    n->method_call_expr.method_name = method;
+    ast_node_list_init(arena, &n->method_call_expr.args);
+    return n;
+}
+
+AstNode* ast_new_field_access(Arena* arena, AstNode* object, StringView field, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_FIELD_ACCESS_EXPR, loc);
+    n->field_access_expr.object = object;
+    n->field_access_expr.field_name = field;
+    return n;
+}
+
+AstNode* ast_new_index(Arena* arena, AstNode* object, AstNode* index, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_INDEX_EXPR, loc);
+    n->index_expr.object = object;
+    n->index_expr.index = index;
+    return n;
+}
+
+AstNode* ast_new_slice(Arena* arena, AstNode* object, AstNode* start, AstNode* end, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_SLICE_EXPR, loc);
+    n->slice_expr.object = object;
+    n->slice_expr.start = start;
+    n->slice_expr.end = end;
+    return n;
+}
+
+AstNode* ast_new_cast(Arena* arena, AstNode* expr, TypeExpr* type, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_CAST_EXPR, loc);
+    n->cast_expr.expr = expr;
+    n->cast_expr.type = type;
+    return n;
+}
+
+AstNode* ast_new_try(Arena* arena, AstNode* expr, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_TRY_EXPR, loc);
+    n->try_expr.expr = expr;
+    return n;
+}
+
+AstNode* ast_new_error_capture(Arena* arena, AstNode* expr, StringView err_name, AstNode* fallback, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_ERROR_CAPTURE_EXPR, loc);
+    n->error_capture_expr.expr = expr;
+    n->error_capture_expr.err_name = err_name;
+    n->error_capture_expr.fallback = fallback;
+    return n;
+}
+
+AstNode* ast_new_unsafe_block(Arena* arena, AstNode* body, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_UNSAFE_BLOCK_EXPR, loc);
+    n->unsafe_block_expr.body = body;
+    return n;
+}
+
+AstNode* ast_new_array_literal(Arena* arena, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_ARRAY_LITERAL, loc);
+    ast_node_list_init(arena, &n->array_literal.elements);
+    return n;
+}
+
+AstNode* ast_new_struct_literal(Arena* arena, TypeExpr* type, SourceLocation loc) {
+    AstNode* n = NEW_NODE(arena, AST_STRUCT_LITERAL, loc);
+    n->struct_literal.type = type;
+    ast_node_list_init(arena, &n->struct_literal.fields);
+    return n;
+}
+
+TypeExpr* type_new_named(Arena* arena, StringView name, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_NAMED, loc);
+    t->named.name = name;
+    type_expr_list_init(arena, &t->named.generic_args);
+    return t;
+}
+
+TypeExpr* type_new_reference(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_REFERENCE, loc);
+    t->unary.child = child;
+    t->unary.is_const = is_const;
+    return t;
+}
+
+TypeExpr* type_new_pointer(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_POINTER, loc);
+    t->unary.child = child;
+    t->unary.is_const = is_const;
+    return t;
+}
+
+TypeExpr* type_new_slice(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_SLICE, loc);
+    t->unary.child = child;
+    t->unary.is_const = is_const;
+    return t;
+}
+
+TypeExpr* type_new_array(Arena* arena, AstNode* length, TypeExpr* elem, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_ARRAY, loc);
+    t->array.length = length;
+    t->array.elem = elem;
+    return t;
+}
+
+TypeExpr* type_new_optional(Arena* arena, TypeExpr* child, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_OPTIONAL, loc);
+    t->unary.child = child;
+    return t;
+}
+
+TypeExpr* type_new_error_union(Arena* arena, TypeExpr* child, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_ERROR_UNION, loc);
+    t->unary.child = child;
+    return t;
+}
+
+TypeExpr* type_new_function(Arena* arena, SourceLocation loc) {
+    TypeExpr* t = NEW_TYPE(arena, TYPE_FUNCTION, loc);
+    type_expr_list_init(arena, &t->func.params);
+    return t;
+}
+
+void type_add_generic_arg(Arena* arena, TypeExpr* type, TypeExpr* arg) {
+    type_expr_list_push(arena, &type->named.generic_args, arg);
+}
+
+void type_func_add_param(Arena* arena, TypeExpr* func, TypeExpr* param) {
+    type_expr_list_push(arena, &func->func.params, param);
+}
+
+void type_func_set_ret(TypeExpr* func, TypeExpr* ret) {
+    func->func.ret = ret;
+}
+
+Pattern* pattern_new_wildcard(Arena* arena, SourceLocation loc) {
+    return NEW_PATTERN(arena, PATTERN_WILDCARD, loc);
+}
+
+Pattern* pattern_new_literal(Arena* arena, AstNode* lit, SourceLocation loc) {
+    Pattern* p = NEW_PATTERN(arena, PATTERN_LITERAL, loc);
+    p->literal = lit;
+    return p;
+}
+
+Pattern* pattern_new_identifier(Arena* arena, StringView name, SourceLocation loc) {
+    Pattern* p = NEW_PATTERN(arena, PATTERN_IDENTIFIER, loc);
+    p->ident = name;
+    return p;
+}
+
+Pattern* pattern_new_enum_variant(Arena* arena, StringView name, Pattern* inner, SourceLocation loc) {
+    Pattern* p = NEW_PATTERN(arena, PATTERN_ENUM_VARIANT, loc);
+    p->enum_variant.name = name;
+    p->enum_variant.inner = inner;
+    return p;
+}
+
+Pattern* pattern_new_struct_field(Arena* arena, SourceLocation loc) {
+    Pattern* p = NEW_PATTERN(arena, PATTERN_STRUCT_FIELD, loc);
+    string_view_list_init(arena, &p->struct_field.fields);
+    pattern_list_init(arena, &p->struct_field.patterns);
+    return p;
+}
+
+void pattern_struct_add_field(Arena* arena, Pattern* pat, StringView name, Pattern* field_pat) {
+    string_view_list_push(arena, &pat->struct_field.fields, name);
+    pattern_list_push(arena, &pat->struct_field.patterns, field_pat);
+}
+
+void ast_import_add_part(Arena* arena, AstNode* import_decl, StringView part) {
+    string_view_list_push(arena, &import_decl->import_decl.parts, part);
+}
+
+void ast_import_set_alias(AstNode* import_decl, StringView alias) {
+    import_decl->import_decl.alias = alias;
+}
+
+void ast_set_module(AstNode* unit, StringView name) {
+    unit->compilation_unit.module_name = name;
+}
+
+void ast_add_import(Arena* arena, AstNode* unit, AstNode* import_decl) {
+    ast_node_list_push(arena, &unit->compilation_unit.imports, import_decl);
+}
+
+void ast_add_decl(Arena* arena, AstNode* unit, AstNode* decl) {
+    ast_node_list_push(arena, &unit->compilation_unit.decls, decl);
+}
+
+void ast_block_add_stmt(Arena* arena, AstNode* block, AstNode* stmt) {
+    ast_node_list_push(arena, &block->block.stmts, stmt);
+}
+
+void ast_block_set_trailing(AstNode* block, AstNode* expr) {
+    block->block.trailing_expr = expr;
+}
+
+void ast_fn_add_param(Arena* arena, AstNode* fn, AstNode* param) {
+    ast_node_list_push(arena, &fn->fn_decl.params, param);
+}
+
+void ast_fn_add_generic(Arena* arena, AstNode* fn, AstNode* param) {
+    ast_node_list_push(arena, &fn->fn_decl.generic_params, param);
+}
+
+void ast_struct_add_field(Arena* arena, AstNode* s, AstNode* field) {
+    ast_node_list_push(arena, &s->struct_decl.fields, field);
+}
+
+void ast_struct_add_generic(Arena* arena, AstNode* s, AstNode* param) {
+    ast_node_list_push(arena, &s->struct_decl.generic_params, param);
+}
+
+void ast_enum_add_variant(Arena* arena, AstNode* e, AstNode* variant) {
+    ast_node_list_push(arena, &e->enum_decl.variants, variant);
+}
+
+void ast_traits_add_method(Arena* arena, AstNode* traits, AstNode* method) {
+    ast_node_list_push(arena, &traits->traits_decl.methods, method);
+}
+
+void ast_extend_add_method(Arena* arena, AstNode* extend, AstNode* method) {
+    ast_node_list_push(arena, &extend->extend_decl.methods, method);
+}
+
+void ast_extend_add_generic(Arena* arena, AstNode* extend, AstNode* param) {
+    ast_node_list_push(arena, &extend->extend_decl.generic_params, param);
+}
+
+void ast_call_add_arg(Arena* arena, AstNode* call, AstNode* arg) {
+    ast_node_list_push(arena, &call->call_expr.args, arg);
+}
+
+void ast_array_add_elem(Arena* arena, AstNode* arr, AstNode* elem) {
+    ast_node_list_push(arena, &arr->array_literal.elements, elem);
+}
+
+void ast_struct_add_field_init(Arena* arena, AstNode* lit, AstNode* field_init) {
+    ast_node_list_push(arena, &lit->struct_literal.fields, field_init);
+}
+
+void ast_match_add_arm(Arena* arena, AstNode* match, AstNode* arm) {
+    ast_node_list_push(arena, &match->match_stmt.arms, arm);
+}
+
+void ast_extend_add_trait(Arena* arena, AstNode* extend, StringView trait) {
+    string_view_list_push(arena, &extend->extend_decl.trait_names, trait);
+}
+
+bool sv_is_primitive_type(StringView sv) {
+    static const char* primitives[] = {
+        "void", "bool", "noreturn",
+        "i8", "i16", "i32", "i64", "i128", "isize",
+        "u8", "u16", "u32", "u64", "u128", "usize",
+        "f32", "f64",
+        NULL
+    };
+    for (size_t i = 0; primitives[i]; i++) {
+        if (sv_eq_cstr(sv, primitives[i])) return true;
+    }
+    return false;
+}
+
+bool token_is_assignment_op(TokenKind kind) {
+    return kind == TOK_ASSIGN || kind == TOK_PLUS_ASSIGN || kind == TOK_MINUS_ASSIGN ||
+           kind == TOK_STAR_ASSIGN || kind == TOK_SLASH_ASSIGN || kind == TOK_PERCENT_ASSIGN ||
+           kind == TOK_AND_ASSIGN || kind == TOK_OR_ASSIGN || kind == TOK_XOR_ASSIGN ||
+           kind == TOK_SHL_ASSIGN || kind == TOK_SHR_ASSIGN;
 }
 
 /* ============================================================================
- * Constructors: AstNode
- * ========================================================================== */
-
-AstNode* ast_new_module_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_MODULE_DECL, loc);
-    node->as.module_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_import_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_IMPORT_DECL, loc);
-    node->as.import_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_fn_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_FN_DECL, loc);
-    node->as.fn_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_struct_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_STRUCT_DECL, loc);
-    node->as.struct_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_enum_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ENUM_DECL, loc);
-    node->as.enum_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_union_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_UNION_DECL, loc);
-    node->as.enum_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_trait_decl(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_TRAIT_DECL, loc);
-    node->as.trait_decl.name = name;
-    return node;
-}
-
-AstNode* ast_new_extend_decl(StringView target, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_EXTEND_DECL, loc);
-    node->as.extend_decl.target_name = target;
-    return node;
-}
-
-AstNode* ast_new_type_alias(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_TYPE_ALIAS, loc);
-    node->as.type_alias.name = name;
-    return node;
-}
-
-AstNode* ast_new_test_decl(StringView name, AstNode* body, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_TEST_DECL, loc);
-    node->as.test_decl.name = name;
-    node->as.test_decl.body = body;
-    return node;
-}
-
-AstNode* ast_new_const_decl(StringView name, TypeExpr* type_, AstNode* init, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_CONST_DECL, loc);
-    node->as.var_decl.name = name;
-    node->as.var_decl.type_ = type_;
-    node->as.var_decl.initializer = init;
-    return node;
-}
-
-AstNode* ast_new_var_decl(StringView name, TypeExpr* type_, AstNode* init, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_VAR_DECL, loc);
-    node->as.var_decl.name = name;
-    node->as.var_decl.type_ = type_;
-    node->as.var_decl.initializer = init;
-    return node;
-}
-
-AstNode* ast_new_block(SourceLocation loc) {
-    return alloc_ast_node(AST_BLOCK, loc);
-}
-
-AstNode* ast_new_return(AstNode* value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_RETURN, loc);
-    node->as.return_stmt.value = value;
-    return node;
-}
-
-AstNode* ast_new_if(AstNode* cond, AstNode* then_, AstNode* else_, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_IF, loc);
-    node->as.if_stmt.condition = cond;
-    node->as.if_stmt.then_block = then_;
-    node->as.if_stmt.else_block = else_;
-    return node;
-}
-
-AstNode* ast_new_while(AstNode* cond, AstNode* body, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_WHILE, loc);
-    node->as.while_stmt.condition = cond;
-    node->as.while_stmt.body = body;
-    return node;
-}
-
-AstNode* ast_new_for(StringView var, TypeExpr* type_, AstNode* iter, AstNode* body, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_FOR, loc);
-    node->as.for_stmt.var_name = var;
-    node->as.for_stmt.var_type = type_;
-    node->as.for_stmt.iterable = iter;
-    node->as.for_stmt.body = body;
-    return node;
-}
-
-AstNode* ast_new_defer(AstNode* body, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_DEFER, loc);
-    node->as.defer_stmt.body = body;
-    return node;
-}
-
-AstNode* ast_new_errdefer(AstNode* body, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ERRDEFER, loc);
-    node->as.defer_stmt.body = body;
-    return node;
-}
-
-AstNode* ast_new_break(SourceLocation loc) {
-    return alloc_ast_node(AST_BREAK, loc);
-}
-
-AstNode* ast_new_continue(SourceLocation loc) {
-    return alloc_ast_node(AST_CONTINUE, loc);
-}
-
-AstNode* ast_new_match(AstNode* value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_MATCH, loc);
-    node->as.match_stmt.value = value;
-    return node;
-}
-
-AstNode* ast_new_assign(TokenKind op, AstNode* left, AstNode* right, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ASSIGN, loc);
-    node->as.assign.op = op;
-    node->as.assign.left = left;
-    node->as.assign.right = right;
-    return node;
-}
-
-AstNode* ast_new_expr_stmt(AstNode* expr, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_EXPR_STMT, loc);
-    node->as.expr_stmt.expr = expr;
-    return node;
-}
-
-AstNode* ast_new_int_literal(int64_t value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_INT_LITERAL, loc);
-    node->as.int_literal.value = value;
-    return node;
-}
-
-AstNode* ast_new_float_literal(double value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_FLOAT_LITERAL, loc);
-    node->as.float_literal.value = value;
-    return node;
-}
-
-AstNode* ast_new_string_literal(StringView value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_STRING_LITERAL, loc);
-    node->as.string_literal.value = value;
-    return node;
-}
-
-AstNode* ast_new_char_literal(uint8_t value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_CHAR_LITERAL, loc);
-    node->as.char_literal.value = value;
-    return node;
-}
-
-AstNode* ast_new_bool_literal(bool value, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_BOOL_LITERAL, loc);
-    node->as.bool_literal.value = value;
-    return node;
-}
-
-AstNode* ast_new_null_literal(SourceLocation loc) {
-    return alloc_ast_node(AST_NULL_LITERAL, loc);
-}
-
-AstNode* ast_new_undefined_literal(SourceLocation loc) {
-    return alloc_ast_node(AST_UNDEFINED_LITERAL, loc);
-}
-
-AstNode* ast_new_identifier(StringView name, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_IDENTIFIER, loc);
-    node->as.identifier.name = name;
-    return node;
-}
-
-AstNode* ast_new_binary(TokenKind op, AstNode* left, AstNode* right, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_BINARY, loc);
-    node->as.binary.op = op;
-    node->as.binary.left = left;
-    node->as.binary.right = right;
-    return node;
-}
-
-AstNode* ast_new_unary(TokenKind op, AstNode* operand, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_UNARY, loc);
-    node->as.unary.op = op;
-    node->as.unary.operand = operand;
-    return node;
-}
-
-AstNode* ast_new_field_access(AstNode* object, StringView field, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_FIELD_ACCESS, loc);
-    node->as.field_access.object = object;
-    node->as.field_access.field = field;
-    return node;
-}
-
-AstNode* ast_new_method_call(AstNode* object, StringView method, AstNode** args, size_t arg_count, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_METHOD_CALL, loc);
-    node->as.method_call.object = object;
-    node->as.method_call.method = method;
-    node->as.method_call.args = args;
-    node->as.method_call.arg_count = arg_count;
-    return node;
-}
-
-AstNode* ast_new_call(AstNode* callee, AstNode** args, size_t arg_count, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_CALL, loc);
-    node->as.call.callee = callee;
-    node->as.call.args = args;
-    node->as.call.arg_count = arg_count;
-    return node;
-}
-
-AstNode* ast_new_index(AstNode* object, AstNode* index, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_INDEX, loc);
-    node->as.index.object = object;
-    node->as.index.index = index;
-    return node;
-}
-
-AstNode* ast_new_slice(AstNode* object, AstNode* start, AstNode* end, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_SLICE, loc);
-    node->as.slice.object = object;
-    node->as.slice.start = start;
-    node->as.slice.end = end;
-    return node;
-}
-
-AstNode* ast_new_cast(AstNode* expr, TypeExpr* type_, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_CAST, loc);
-    node->as.cast.expr = expr;
-    node->as.cast.type_ = type_;
-    return node;
-}
-
-AstNode* ast_new_try(AstNode* expr, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_TRY, loc);
-    node->as.try_expr.expr = expr;
-    node->as.try_expr.has_else = false;
-    return node;
-}
-
-AstNode* ast_new_try_else(AstNode* expr, StringView err_name, AstNode* else_block, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_TRY_ELSE, loc);
-    node->as.try_expr.expr = expr;
-    node->as.try_expr.err_name = err_name;
-    node->as.try_expr.else_block = else_block;
-    node->as.try_expr.has_else = true;
-    return node;
-}
-
-AstNode* ast_new_unsafe_block(AstNode* block, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_UNSAFE_BLOCK, loc);
-    node->as.unsafe_block.block = block;
-    return node;
-}
-
-AstNode* ast_new_addr_of(AstNode* operand, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ADDR_OF, loc);
-    node->as.unary.operand = operand;
-    return node;
-}
-
-AstNode* ast_new_addr_of_const(AstNode* operand, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ADDR_OF_CONST, loc);
-    node->as.unary.operand = operand;
-    return node;
-}
-
-AstNode* ast_new_deref(AstNode* operand, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_DEREF, loc);
-    node->as.unary.operand = operand;
-    return node;
-}
-
-AstNode* ast_new_array_literal(TypeExpr* type_, AstNode** elems, size_t elem_count, AstNode* count, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_ARRAY_LITERAL, loc);
-    node->as.array_literal.type_ = type_;
-    node->as.array_literal.elems = elems;
-    node->as.array_literal.elem_count = elem_count;
-    node->as.array_literal.count = count;
-    return node;
-}
-
-AstNode* ast_new_struct_literal(TypeExpr* type_, SourceLocation loc) {
-    AstNode* node = alloc_ast_node(AST_STRUCT_LITERAL, loc);
-    node->as.struct_literal.type_ = type_;
-    return node;
-}
-
-/* ============================================================================
- * Constructors: TypeExpr
- * ========================================================================== */
-
-TypeExpr* type_new_named(StringView name, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_NAMED, loc);
-    type->as.named.name = name;
-    return type;
-}
-
-TypeExpr* type_new_primitive(StringView name, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_PRIMITIVE, loc);
-    type->as.primitive.name = name;
-    return type;
-}
-
-TypeExpr* type_new_pointer(TypeExpr* pointee, bool is_const, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_POINTER, loc);
-    type->as.ptr.pointee = pointee;
-    type->as.ptr.is_const = is_const;
-    return type;
-}
-
-TypeExpr* type_new_reference(TypeExpr* pointee, bool is_const, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_REFERENCE, loc);
-    type->as.ref.pointee = pointee;
-    type->as.ref.is_const = is_const;
-    return type;
-}
-
-TypeExpr* type_new_slice(TypeExpr* element, bool is_const, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_SLICE, loc);
-    type->as.slice.element = element;
-    type->as.slice.is_const = is_const;
-    return type;
-}
-
-TypeExpr* type_new_array(AstNode* size, TypeExpr* element, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_ARRAY, loc);
-    type->as.array.size = size;
-    type->as.array.element = element;
-    return type;
-}
-
-TypeExpr* type_new_optional(TypeExpr* inner, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_OPTIONAL, loc);
-    type->as.optional.inner = inner;
-    return type;
-}
-
-TypeExpr* type_new_error_union(TypeExpr* inner, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_ERROR_UNION, loc);
-    type->as.error_union.inner = inner;
-    return type;
-}
-
-TypeExpr* type_new_function(TypeExpr** params, size_t param_count, TypeExpr* ret, SourceLocation loc) {
-    TypeExpr* type = alloc_type_expr(TYPE_FUNCTION, loc);
-    type->as.function.params = params;
-    type->as.function.param_count = param_count;
-    type->as.function.ret = ret;
-    return type;
-}
-
-/* ============================================================================
- * Constructors: Pattern
- * ========================================================================== */
-
-Pattern* pat_new_wildcard(SourceLocation loc) {
-    return alloc_pattern(PAT_WILDCARD, loc);
-}
-
-Pattern* pat_new_literal(AstNode* literal, SourceLocation loc) {
-    Pattern* pat = alloc_pattern(PAT_LITERAL, loc);
-    pat->as.literal.literal = literal;
-    return pat;
-}
-
-Pattern* pat_new_identifier(StringView name, SourceLocation loc) {
-    Pattern* pat = alloc_pattern(PAT_IDENTIFIER, loc);
-    pat->as.ident.name = name;
-    return pat;
-}
-
-Pattern* pat_new_enum_variant(StringView name, Pattern** fields, size_t field_count, SourceLocation loc) {
-    Pattern* pat = alloc_pattern(PAT_ENUM_VARIANT, loc);
-    pat->as.enum_variant.name = name;
-    pat->as.enum_variant.fields = fields;
-    pat->as.enum_variant.field_count = field_count;
-    return pat;
-}
-
-Pattern* pat_new_struct_field(StringView name, Pattern** fields, size_t field_count, SourceLocation loc) {
-    Pattern* pat = alloc_pattern(PAT_STRUCT_FIELD, loc);
-    pat->as.struct_field.name = name;
-    pat->as.struct_field.fields = fields;
-    pat->as.struct_field.field_count = field_count;
-    return pat;
-}
-
-/* ============================================================================
- * AST Debug Printing Implementation
+ * AST dump
  * ========================================================================== */
 
 static void print_indent(int indent) {
-    for (int i = 0; i < indent; i++) {
-        printf("  ");
-    }
+    for (int i = 0; i < indent; i++) printf("  ");
 }
 
 static void print_sv(StringView sv) {
-    if (sv.data) {
-        printf("%.*s", (int)sv.len, sv.data);
-    } else {
-        printf("<null>");
-    }
+    printf("%.*s", (int)sv.len, sv.data);
 }
 
-static void type_print(TypeExpr* type, int indent) {
-    if (!type) {
-        print_indent(indent);
-        printf("(null type)\n");
-        return;
-    }
+static void print_type(TypeExpr* t);
+static void print_node(AstNode* node, int indent);
+static void print_pattern(Pattern* p);
 
-    print_indent(indent);
-    switch (type->kind) {
+static void print_type(TypeExpr* t) {
+    if (!t) { printf("(TYPE null)"); return; }
+    switch (t->kind) {
         case TYPE_NAMED:
-            printf("TypeNamed: ");
-            print_sv(type->as.named.name);
-            printf("\n");
-            for (size_t i = 0; i < type->as.named.arg_count; i++) {
-                type_print(type->as.named.args[i], indent + 1);
+            printf("(TYPE ");
+            print_sv(t->named.name);
+            if (t->named.generic_args.count > 0) {
+                printf(" ");
+                for (size_t i = 0; i < t->named.generic_args.count; i++) {
+                    print_type(t->named.generic_args.items[i]);
+                    if (i + 1 < t->named.generic_args.count) printf(" ");
+                }
             }
-            break;
-        case TYPE_PRIMITIVE:
-            printf("TypePrimitive: ");
-            print_sv(type->as.primitive.name);
-            printf("\n");
-            break;
-        case TYPE_POINTER:
-            printf("TypePointer (const: %s)\n", type->as.ptr.is_const ? "true" : "false");
-            type_print(type->as.ptr.pointee, indent + 1);
+            printf(")");
             break;
         case TYPE_REFERENCE:
-            printf("TypeReference (const: %s)\n", type->as.ref.is_const ? "true" : "false");
-            type_print(type->as.ref.pointee, indent + 1);
+            printf("(TYPE &%s", t->unary.is_const ? "const " : "");
+            print_type(t->unary.child);
+            printf(")");
+            break;
+        case TYPE_POINTER:
+            printf("(TYPE *%s", t->unary.is_const ? "const " : "");
+            print_type(t->unary.child);
+            printf(")");
             break;
         case TYPE_SLICE:
-            printf("TypeSlice (const: %s)\n", type->as.slice.is_const ? "true" : "false");
-            type_print(type->as.slice.element, indent + 1);
+            printf("(TYPE []%s", t->unary.is_const ? "const " : "");
+            print_type(t->unary.child);
+            printf(")");
             break;
         case TYPE_ARRAY:
-            printf("TypeArray\n");
-            type_print(type->as.array.element, indent + 1);
-            if (type->as.array.size) {
-                ast_print(type->as.array.size, indent + 1);
-            }
+            printf("(TYPE [");
+            if (t->array.length) print_node(t->array.length, 0);
+            printf("] ");
+            print_type(t->array.elem);
+            printf(")");
             break;
         case TYPE_OPTIONAL:
-            printf("TypeOptional\n");
-            type_print(type->as.optional.inner, indent + 1);
+            printf("(TYPE ? ");
+            print_type(t->unary.child);
+            printf(")");
             break;
         case TYPE_ERROR_UNION:
-            printf("TypeErrorUnion\n");
-            type_print(type->as.error_union.inner, indent + 1);
+            printf("(TYPE ! ");
+            print_type(t->unary.child);
+            printf(")");
             break;
         case TYPE_FUNCTION:
-            printf("TypeFunction\n");
-            for (size_t i = 0; i < type->as.function.param_count; i++) {
-                type_print(type->as.function.params[i], indent + 1);
+            printf("(TYPE fn(");
+            for (size_t i = 0; i < t->func.params.count; i++) {
+                print_type(t->func.params.items[i]);
+                if (i + 1 < t->func.params.count) printf(" ");
             }
-            type_print(type->as.function.ret, indent + 1);
+            printf(")");
+            if (t->func.ret) {
+                printf(" -> ");
+                print_type(t->func.ret);
+            }
+            printf(")");
             break;
     }
 }
 
-static void pat_print(Pattern* pat, int indent) {
-    if (!pat) {
+static void print_pattern(Pattern* p) {
+    if (!p) { printf("(PATTERN null)"); return; }
+    switch (p->kind) {
+        case PATTERN_WILDCARD:
+            printf("(PATTERN _)");
+            break;
+        case PATTERN_LITERAL:
+            printf("(PATTERN ");
+            print_node(p->literal, 0);
+            printf(")");
+            break;
+        case PATTERN_IDENTIFIER:
+            printf("(PATTERN ");
+            print_sv(p->ident);
+            printf(")");
+            break;
+        case PATTERN_ENUM_VARIANT:
+            printf("(PATTERN .");
+            print_sv(p->enum_variant.name);
+            if (p->enum_variant.inner) {
+                printf(" ");
+                print_pattern(p->enum_variant.inner);
+            }
+            printf(")");
+            break;
+        case PATTERN_STRUCT_FIELD:
+            printf("(PATTERN .{");
+            for (size_t i = 0; i < p->struct_field.fields.count; i++) {
+                if (i > 0) printf(", ");
+                print_sv(p->struct_field.fields.items[i]);
+                printf(": ");
+                print_pattern(p->struct_field.patterns.items[i]);
+            }
+            printf("})");
+            break;
+    }
+}
+
+static void print_node(AstNode* node, int indent) {
+    if (!node) {
         print_indent(indent);
-        printf("(null pattern)\n");
+        printf("(null)\n");
         return;
     }
-
     print_indent(indent);
-    switch (pat->kind) {
-        case PAT_WILDCARD:
-            printf("PatWildcard (_)\n");
-            break;
-        case PAT_LITERAL:
-            printf("PatLiteral\n");
-            ast_print(pat->as.literal.literal, indent + 1);
-            break;
-        case PAT_IDENTIFIER:
-            printf("PatIdentifier: ");
-            print_sv(pat->as.ident.name);
-            printf("\n");
-            break;
-        case PAT_ENUM_VARIANT:
-            printf("PatEnumVariant: ");
-            print_sv(pat->as.enum_variant.name);
-            printf("\n");
-            for (size_t i = 0; i < pat->as.enum_variant.field_count; i++) {
-                pat_print(pat->as.enum_variant.fields[i], indent + 1);
+    switch (node->kind) {
+        case AST_COMPILATION_UNIT:
+            printf("(COMPILATION_UNIT");
+            if (node->compilation_unit.module_name.len > 0) {
+                printf(" module=");
+                print_sv(node->compilation_unit.module_name);
             }
-            break;
-        case PAT_STRUCT_FIELD:
-            printf("PatStructField: ");
-            print_sv(pat->as.struct_field.name);
             printf("\n");
-            for (size_t i = 0; i < pat->as.struct_field.field_count; i++) {
-                pat_print(pat->as.struct_field.fields[i], indent + 1);
+            for (size_t i = 0; i < node->compilation_unit.imports.count; i++)
+                print_node(node->compilation_unit.imports.items[i], indent + 1);
+            for (size_t i = 0; i < node->compilation_unit.decls.count; i++)
+                print_node(node->compilation_unit.decls.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_MODULE_DECL:
+            printf("(MODULE_DECL "); print_sv(node->module_decl.name); printf(")\n");
+            break;
+        case AST_IMPORT_DECL:
+            printf("(IMPORT_DECL ");
+            for (size_t i = 0; i < node->import_decl.parts.count; i++) {
+                if (i > 0) printf(".");
+                print_sv(node->import_decl.parts.items[i]);
             }
+            if (node->import_decl.alias.len > 0) {
+                printf(" as "); print_sv(node->import_decl.alias);
+            }
+            printf(")\n");
+            break;
+        case AST_FN_DECL:
+            printf("(FN_DECL%s%s ",
+                   node->fn_decl.is_pub ? " pub" : "",
+                   node->fn_decl.is_comptime ? " comptime" : "");
+            print_sv(node->fn_decl.name);
+            if (node->fn_decl.generic_params.count > 0) {
+                printf(" (GENERIC");
+                for (size_t i = 0; i < node->fn_decl.generic_params.count; i++) {
+                    printf(" ");
+                    print_sv(node->fn_decl.generic_params.items[i]->generic_param_decl.name);
+                }
+                printf(")");
+            }
+            printf("\n");
+            for (size_t i = 0; i < node->fn_decl.params.count; i++)
+                print_node(node->fn_decl.params.items[i], indent + 1);
+            if (node->fn_decl.ret_type) {
+                print_indent(indent + 1); printf("-> "); print_type(node->fn_decl.ret_type); printf("\n");
+            }
+            if (node->fn_decl.body) {
+                print_node(node->fn_decl.body, indent + 1);
+            } else {
+                print_indent(indent + 1); printf("(EXTERN)\n");
+            }
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_STRUCT_DECL:
+            printf("(STRUCT_DECL%s ", node->struct_decl.is_pub ? " pub" : "");
+            print_sv(node->struct_decl.name);
+            printf("\n");
+            for (size_t i = 0; i < node->struct_decl.fields.count; i++)
+                print_node(node->struct_decl.fields.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_UNION_DECL:
+            printf("(UNION_DECL%s ", node->struct_decl.is_pub ? " pub" : "");
+            print_sv(node->struct_decl.name);
+            printf("\n");
+            for (size_t i = 0; i < node->struct_decl.fields.count; i++)
+                print_node(node->struct_decl.fields.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ENUM_DECL:
+            printf("(ENUM_DECL%s ", node->enum_decl.is_pub ? " pub" : "");
+            print_sv(node->enum_decl.name);
+            printf("\n");
+            for (size_t i = 0; i < node->enum_decl.variants.count; i++)
+                print_node(node->enum_decl.variants.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_TRAITS_DECL:
+            printf("(TRAITS_DECL%s ", node->traits_decl.is_pub ? " pub" : "");
+            print_sv(node->traits_decl.name);
+            printf("\n");
+            for (size_t i = 0; i < node->traits_decl.methods.count; i++)
+                print_node(node->traits_decl.methods.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_EXTEND_DECL:
+            printf("(EXTEND_DECL ");
+            print_sv(node->extend_decl.target_name);
+            if (node->extend_decl.trait_names.count > 0) {
+                printf(" with ");
+                for (size_t i = 0; i < node->extend_decl.trait_names.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_sv(node->extend_decl.trait_names.items[i]);
+                }
+            }
+            printf("\n");
+            for (size_t i = 0; i < node->extend_decl.methods.count; i++)
+                print_node(node->extend_decl.methods.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_TYPE_ALIAS:
+            printf("(TYPE_ALIAS%s ", node->type_alias.is_pub ? " pub" : "");
+            print_sv(node->type_alias.name);
+            printf(" = "); print_type(node->type_alias.type); printf(")\n");
+            break;
+        case AST_CONST_DECL:
+            printf("(CONST_DECL%s ", node->var_decl.is_pub ? " pub" : "");
+            print_sv(node->var_decl.name);
+            if (node->var_decl.type) { printf(" : "); print_type(node->var_decl.type); }
+            printf(" =\n");
+            print_node(node->var_decl.init, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_VAR_DECL:
+            printf("(VAR_DECL%s ", node->var_decl.is_pub ? " pub" : "");
+            print_sv(node->var_decl.name);
+            if (node->var_decl.type) { printf(" : "); print_type(node->var_decl.type); }
+            printf(" =\n");
+            print_node(node->var_decl.init, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_TEST_DECL:
+            printf("(TEST_DECL "); print_sv(node->test_decl.name); printf("\n");
+            print_node(node->test_decl.body, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_FIELD_DECL:
+            printf("(FIELD_DECL%s ", node->field_decl.is_pub ? " pub" : "");
+            print_sv(node->field_decl.name);
+            printf(" : "); print_type(node->field_decl.type);
+            if (node->field_decl.default_value) {
+                printf(" = "); print_node(node->field_decl.default_value, 0);
+            }
+            printf(")\n");
+            break;
+        case AST_VARIANT_DECL:
+            printf("(VARIANT_DECL "); print_sv(node->variant_decl.name);
+            if (node->variant_decl.payload_type) {
+                printf(" "); print_type(node->variant_decl.payload_type);
+            }
+            if (node->variant_decl.discriminant) {
+                printf(" = "); print_node(node->variant_decl.discriminant, 0);
+            }
+            printf(")\n");
+            break;
+        case AST_TRAIT_METHOD_DECL:
+            printf("(TRAIT_METHOD_DECL%s ", node->trait_method_decl.is_pub ? " pub" : "");
+            print_sv(node->trait_method_decl.name);
+            printf("\n");
+            for (size_t i = 0; i < node->trait_method_decl.params.count; i++)
+                print_node(node->trait_method_decl.params.items[i], indent + 1);
+            if (node->trait_method_decl.ret_type) {
+                print_indent(indent + 1); printf("-> "); print_type(node->trait_method_decl.ret_type); printf("\n");
+            }
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_PARAM_DECL:
+            printf("(PARAM_DECL%s ", node->param_decl.is_self ? " self" : "");
+            print_sv(node->param_decl.name);
+            if (node->param_decl.type) { printf(" : "); print_type(node->param_decl.type); }
+            if (node->param_decl.default_value) { printf(" = "); print_node(node->param_decl.default_value, 0); }
+            printf(")\n");
+            break;
+        case AST_GENERIC_PARAM_DECL:
+            printf("(GENERIC_PARAM_DECL "); print_sv(node->generic_param_decl.name);
+            if (node->generic_param_decl.trait_constraints.count > 0) {
+                printf(" with ");
+                for (size_t i = 0; i < node->generic_param_decl.trait_constraints.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_sv(node->generic_param_decl.trait_constraints.items[i]);
+                }
+            }
+            printf(")\n");
+            break;
+        case AST_BLOCK:
+            printf("(BLOCK\n");
+            for (size_t i = 0; i < node->block.stmts.count; i++)
+                print_node(node->block.stmts.items[i], indent + 1);
+            if (node->block.trailing_expr) {
+                print_indent(indent + 1); printf("(TRAILING\n");
+                print_node(node->block.trailing_expr, indent + 2);
+                print_indent(indent + 1); printf(")\n");
+            }
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_EXPR_STMT:
+            printf("(EXPR_STMT\n");
+            print_node(node->expr_stmt.expr, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_RETURN_STMT:
+            printf("(RETURN_STMT\n");
+            if (node->return_stmt.value) print_node(node->return_stmt.value, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_IF_STMT:
+            printf("(IF_STMT\n");
+            print_node(node->if_stmt.condition, indent + 1);
+            print_node(node->if_stmt.then_block, indent + 1);
+            if (node->if_stmt.else_block) print_node(node->if_stmt.else_block, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_WHILE_STMT:
+            printf("(WHILE_STMT\n");
+            print_node(node->while_stmt.condition, indent + 1);
+            print_node(node->while_stmt.body, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_FOR_STMT:
+            printf("(FOR_STMT "); print_sv(node->for_stmt.var_name);
+            printf(" : "); print_type(node->for_stmt.var_type);
+            printf(" in\n");
+            print_node(node->for_stmt.iterable, indent + 1);
+            print_node(node->for_stmt.body, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_DEFER_STMT:
+            printf("(DEFER_STMT\n");
+            print_node(node->defer_stmt.expr, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ERRDEFER_STMT:
+            printf("(ERRDEFER_STMT\n");
+            print_node(node->errdefer_stmt.body, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_BREAK_STMT:
+            printf("(BREAK_STMT)\n"); break;
+        case AST_CONTINUE_STMT:
+            printf("(CONTINUE_STMT)\n"); break;
+        case AST_MATCH_STMT:
+            printf("(MATCH_STMT\n");
+            print_node(node->match_stmt.expr, indent + 1);
+            for (size_t i = 0; i < node->match_stmt.arms.count; i++)
+                print_node(node->match_stmt.arms.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_MATCH_ARM:
+            printf("(MATCH_ARM "); print_pattern(node->match_arm.pattern);
+            printf(" =>\n");
+            print_node(node->match_arm.expr, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ASSIGN_STMT:
+            printf("(ASSIGN_STMT %s\n", token_kind_name(node->assign_stmt.op));
+            print_node(node->assign_stmt.lhs, indent + 1);
+            print_node(node->assign_stmt.rhs, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_INT_LITERAL:
+            printf("(INT_LITERAL %lld)\n", (long long)node->int_literal.value); break;
+        case AST_FLOAT_LITERAL:
+            printf("(FLOAT_LITERAL %g)\n", node->float_literal.value); break;
+        case AST_STRING_LITERAL:
+            printf("(STRING_LITERAL "); print_sv(node->string_literal.value); printf(")\n"); break;
+        case AST_CHAR_LITERAL:
+            printf("(CHAR_LITERAL "); print_sv(node->char_literal.value); printf(")\n"); break;
+        case AST_BOOL_LITERAL:
+            printf("(BOOL_LITERAL %s)\n", node->bool_literal.value ? "true" : "false"); break;
+        case AST_NULL_LITERAL:
+            printf("(NULL_LITERAL)\n"); break;
+        case AST_UNDEFINED_LITERAL:
+            printf("(UNDEFINED_LITERAL)\n"); break;
+        case AST_IDENTIFIER:
+            printf("(IDENTIFIER "); print_sv(node->identifier.name); printf(")\n"); break;
+        case AST_BINARY_EXPR:
+            printf("(BINARY %s\n", token_kind_name(node->binary_expr.op));
+            print_node(node->binary_expr.left, indent + 1);
+            print_node(node->binary_expr.right, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_UNARY_EXPR:
+            printf("(UNARY %s\n", token_kind_name(node->unary_expr.op));
+            print_node(node->unary_expr.operand, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_CALL_EXPR:
+            printf("(CALL_EXPR\n");
+            print_node(node->call_expr.callee, indent + 1);
+            for (size_t i = 0; i < node->call_expr.args.count; i++)
+                print_node(node->call_expr.args.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_METHOD_CALL_EXPR:
+            printf("(METHOD_CALL_EXPR "); print_sv(node->method_call_expr.method_name); printf("\n");
+            print_node(node->method_call_expr.receiver, indent + 1);
+            for (size_t i = 0; i < node->method_call_expr.args.count; i++)
+                print_node(node->method_call_expr.args.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_FIELD_ACCESS_EXPR:
+            printf("(FIELD_ACCESS_EXPR "); print_sv(node->field_access_expr.field_name); printf("\n");
+            print_node(node->field_access_expr.object, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_INDEX_EXPR:
+            printf("(INDEX_EXPR\n");
+            print_node(node->index_expr.object, indent + 1);
+            print_node(node->index_expr.index, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_SLICE_EXPR:
+            printf("(SLICE_EXPR\n");
+            print_node(node->slice_expr.object, indent + 1);
+            print_node(node->slice_expr.start, indent + 1);
+            print_node(node->slice_expr.end, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_CAST_EXPR:
+            printf("(CAST_EXPR\n");
+            print_node(node->cast_expr.expr, indent + 1);
+            print_indent(indent + 1); print_type(node->cast_expr.type); printf("\n");
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_TRY_EXPR:
+            printf("(TRY_EXPR\n");
+            print_node(node->try_expr.expr, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ERROR_CAPTURE_EXPR:
+            printf("(ERROR_CAPTURE_EXPR "); print_sv(node->error_capture_expr.err_name); printf("\n");
+            print_node(node->error_capture_expr.expr, indent + 1);
+            print_node(node->error_capture_expr.fallback, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_UNSAFE_BLOCK_EXPR:
+            printf("(UNSAFE_BLOCK_EXPR\n");
+            print_node(node->unsafe_block_expr.body, indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ARRAY_LITERAL:
+            printf("(ARRAY_LITERAL%s ", node->array_literal.sentinel ? " sentinel" : "");
+            if (node->array_literal.length) { print_node(node->array_literal.length, 0); printf(" "); }
+            print_type(node->array_literal.explicit_type); printf("\n");
+            for (size_t i = 0; i < node->array_literal.elements.count; i++)
+                print_node(node->array_literal.elements.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_STRUCT_LITERAL:
+            printf("(STRUCT_LITERAL "); print_type(node->struct_literal.type); printf("\n");
+            for (size_t i = 0; i < node->struct_literal.fields.count; i++)
+                print_node(node->struct_literal.fields.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        case AST_ARG_LIST:
+            printf("(ARG_LIST\n");
+            for (size_t i = 0; i < node->arg_list.args.count; i++)
+                print_node(node->arg_list.args.items[i], indent + 1);
+            print_indent(indent); printf(")\n");
+            break;
+        default:
+            printf("(UNKNOWN_KIND_%d)\n", node->kind);
             break;
     }
 }
 
 void ast_print(AstNode* node, int indent) {
-    if (!node) {
-        print_indent(indent);
-        printf("(null node)\n");
-        return;
-    }
-
-    print_indent(indent);
-
-    switch (node->kind) {
-        case AST_MODULE_DECL:
-            printf("ModuleDecl: ");
-            print_sv(node->as.module_decl.name);
-            printf("\n");
-            break;
-
-        case AST_IMPORT_DECL:
-            printf("ImportDecl: ");
-            print_sv(node->as.import_decl.name);
-            if (node->as.import_decl.has_alias) {
-                printf(" as ");
-                print_sv(node->as.import_decl.alias);
-            }
-            printf("\n");
-            break;
-
-        case AST_FN_DECL:
-            printf("FnDecl: ");
-            print_sv(node->as.fn_decl.name);
-            printf(" (pub: %s, comptime: %s, unsafe: %s, extern: %s)\n",
-                   node->as.fn_decl.is_pub ? "true" : "false",
-                   node->as.fn_decl.is_comptime ? "true" : "false",
-                   node->as.fn_decl.is_unsafe ? "true" : "false",
-                   node->as.fn_decl.is_extern ? "true" : "false");
-            if (node->as.fn_decl.return_type) {
-                type_print(node->as.fn_decl.return_type, indent + 1);
-            }
-            if (node->as.fn_decl.body) {
-                ast_print(node->as.fn_decl.body, indent + 1);
-            }
-            break;
-
-        case AST_STRUCT_DECL:
-            printf("StructDecl: ");
-            print_sv(node->as.struct_decl.name);
-            printf("\n");
-            for (size_t i = 0; i < node->as.struct_decl.field_count; i++) {
-                print_indent(indent + 1);
-                printf("Field: ");
-                print_sv(node->as.struct_decl.fields[i].name);
-                printf("\n");
-                if (node->as.struct_decl.fields[i].type_) {
-                    type_print(node->as.struct_decl.fields[i].type_, indent + 2);
-                }
-            }
-            break;
-
-        case AST_ENUM_DECL:
-            printf("EnumDecl: ");
-            print_sv(node->as.enum_decl.name);
-            printf("\n");
-            for (size_t i = 0; i < node->as.enum_decl.variant_count; i++) {
-                print_indent(indent + 1);
-                printf("Variant: ");
-                print_sv(node->as.enum_decl.variants[i].name);
-                printf("\n");
-                if (node->as.enum_decl.variants[i].payload_type) {
-                    type_print(node->as.enum_decl.variants[i].payload_type, indent + 2);
-                }
-            }
-            break;
-
-        case AST_UNION_DECL:
-            printf("UnionDecl: ");
-            print_sv(node->as.enum_decl.name);
-            printf("\n");
-            break;
-
-        case AST_TRAIT_DECL:
-            printf("TraitDecl: ");
-            print_sv(node->as.trait_decl.name);
-            printf("\n");
-            for (size_t i = 0; i < node->as.trait_decl.method_count; i++) {
-                ast_print(node->as.trait_decl.methods[i], indent + 1);
-            }
-            break;
-
-        case AST_EXTEND_DECL:
-            printf("ExtendDecl target: ");
-            print_sv(node->as.extend_decl.target_name);
-            printf("\n");
-            for (size_t i = 0; i < node->as.extend_decl.method_count; i++) {
-                ast_print(node->as.extend_decl.methods[i], indent + 1);
-            }
-            break;
-
-        case AST_TYPE_ALIAS:
-            printf("TypeAlias: ");
-            print_sv(node->as.type_alias.name);
-            printf("\n");
-            if (node->as.type_alias.type_) {
-                type_print(node->as.type_alias.type_, indent + 1);
-            }
-            break;
-
-        case AST_TEST_DECL:
-            printf("TestDecl: ");
-            print_sv(node->as.test_decl.name);
-            printf("\n");
-            if (node->as.test_decl.body) {
-                ast_print(node->as.test_decl.body, indent + 1);
-            }
-            break;
-
-        case AST_CONST_DECL:
-            printf("ConstDecl: ");
-            print_sv(node->as.var_decl.name);
-            printf("\n");
-            if (node->as.var_decl.type_) {
-                type_print(node->as.var_decl.type_, indent + 1);
-            }
-            if (node->as.var_decl.initializer) {
-                ast_print(node->as.var_decl.initializer, indent + 1);
-            }
-            break;
-
-        case AST_VAR_DECL:
-            printf("VarDecl: ");
-            print_sv(node->as.var_decl.name);
-            printf("\n");
-            if (node->as.var_decl.type_) {
-                type_print(node->as.var_decl.type_, indent + 1);
-            }
-            if (node->as.var_decl.initializer) {
-                ast_print(node->as.var_decl.initializer, indent + 1);
-            }
-            break;
-
-        case AST_BLOCK:
-            printf("Block\n");
-            for (size_t i = 0; i < node->as.block.stmt_count; i++) {
-                ast_print(node->as.block.stmts[i], indent + 1);
-            }
-            if (node->as.block.trailing_expr) {
-                print_indent(indent + 1);
-                printf("TrailingExpr:\n");
-                ast_print(node->as.block.trailing_expr, indent + 2);
-            }
-            break;
-
-        case AST_RETURN:
-            printf("ReturnStmt\n");
-            if (node->as.return_stmt.value) {
-                ast_print(node->as.return_stmt.value, indent + 1);
-            }
-            break;
-
-        case AST_IF:
-            printf("IfStmt\n");
-            ast_print(node->as.if_stmt.condition, indent + 1);
-            ast_print(node->as.if_stmt.then_block, indent + 1);
-            if (node->as.if_stmt.else_block) {
-                ast_print(node->as.if_stmt.else_block, indent + 1);
-            }
-            break;
-
-        case AST_WHILE:
-            printf("WhileStmt\n");
-            ast_print(node->as.while_stmt.condition, indent + 1);
-            ast_print(node->as.while_stmt.body, indent + 1);
-            break;
-
-        case AST_FOR:
-            printf("ForStmt var: ");
-            print_sv(node->as.for_stmt.var_name);
-            printf("\n");
-            ast_print(node->as.for_stmt.iterable, indent + 1);
-            ast_print(node->as.for_stmt.body, indent + 1);
-            break;
-
-        case AST_DEFER:
-            printf("DeferStmt\n");
-            ast_print(node->as.defer_stmt.body, indent + 1);
-            break;
-
-        case AST_ERRDEFER:
-            printf("ErrDeferStmt\n");
-            ast_print(node->as.defer_stmt.body, indent + 1);
-            break;
-
-        case AST_BREAK:
-            printf("Break\n");
-            break;
-
-        case AST_CONTINUE:
-            printf("Continue\n");
-            break;
-
-        case AST_MATCH:
-            printf("MatchStmt\n");
-            if (node->as.match_stmt.value) {
-                ast_print(node->as.match_stmt.value, indent + 1);
-            }
-            for (size_t i = 0; i < node->as.match_stmt.arm_count; i++) {
-                print_indent(indent + 1);
-                printf("Arm:\n");
-                pat_print(node->as.match_stmt.arms[i].pat, indent + 2);
-                ast_print(node->as.match_stmt.arms[i].expr, indent + 2);
-            }
-            break;
-
-        case AST_ASSIGN:
-            printf("Assign (op: %d)\n", node->as.assign.op);
-            ast_print(node->as.assign.left, indent + 1);
-            ast_print(node->as.assign.right, indent + 1);
-            break;
-
-        case AST_EXPR_STMT:
-            printf("ExprStmt\n");
-            ast_print(node->as.expr_stmt.expr, indent + 1);
-            break;
-
-        case AST_INT_LITERAL:
-            printf("IntLiteral: %lld\n", (long long)node->as.int_literal.value);
-            break;
-
-        case AST_FLOAT_LITERAL:
-            printf("FloatLiteral: %g\n", node->as.float_literal.value);
-            break;
-
-        case AST_STRING_LITERAL:
-            printf("StringLiteral: \"");
-            print_sv(node->as.string_literal.value);
-            printf("\"\n");
-            break;
-
-        case AST_CHAR_LITERAL:
-            printf("CharLiteral: '%c' (%u)\n", node->as.char_literal.value, node->as.char_literal.value);
-            break;
-
-        case AST_BOOL_LITERAL:
-            printf("BoolLiteral: %s\n", node->as.bool_literal.value ? "true" : "false");
-            break;
-
-        case AST_NULL_LITERAL:
-            printf("NullLiteral\n");
-            break;
-
-        case AST_UNDEFINED_LITERAL:
-            printf("UndefinedLiteral\n");
-            break;
-
-        case AST_IDENTIFIER:
-            printf("Identifier: ");
-            print_sv(node->as.identifier.name);
-            printf("\n");
-            break;
-
-        case AST_BINARY:
-            printf("Binary (op: %d)\n", node->as.binary.op);
-            ast_print(node->as.binary.left, indent + 1);
-            ast_print(node->as.binary.right, indent + 1);
-            break;
-
-        case AST_UNARY:
-            printf("Unary (op: %d)\n", node->as.unary.op);
-            ast_print(node->as.unary.operand, indent + 1);
-            break;
-
-        case AST_FIELD_ACCESS:
-            printf("FieldAccess: .");
-            print_sv(node->as.field_access.field);
-            printf("\n");
-            ast_print(node->as.field_access.object, indent + 1);
-            break;
-
-        case AST_METHOD_CALL:
-            printf("MethodCall: .");
-            print_sv(node->as.method_call.method);
-            printf("()\n");
-            ast_print(node->as.method_call.object, indent + 1);
-            for (size_t i = 0; i < node->as.method_call.arg_count; i++) {
-                ast_print(node->as.method_call.args[i], indent + 1);
-            }
-            break;
-
-        case AST_CALL:
-            printf("Call\n");
-            ast_print(node->as.call.callee, indent + 1);
-            for (size_t i = 0; i < node->as.call.arg_count; i++) {
-                ast_print(node->as.call.args[i], indent + 1);
-            }
-            break;
-
-        case AST_INDEX:
-            printf("Index\n");
-            ast_print(node->as.index.object, indent + 1);
-            ast_print(node->as.index.index, indent + 1);
-            break;
-
-        case AST_SLICE:
-            printf("Slice\n");
-            ast_print(node->as.slice.object, indent + 1);
-            if (node->as.slice.start) ast_print(node->as.slice.start, indent + 1);
-            if (node->as.slice.end) ast_print(node->as.slice.end, indent + 1);
-            break;
-
-        case AST_CAST:
-            printf("Cast\n");
-            ast_print(node->as.cast.expr, indent + 1);
-            type_print(node->as.cast.type_, indent + 1);
-            break;
-
-        case AST_TRY:
-            printf("TryExpr\n");
-            ast_print(node->as.try_expr.expr, indent + 1);
-            break;
-
-        case AST_TRY_ELSE:
-            printf("TryElseExpr err_name: ");
-            print_sv(node->as.try_expr.err_name);
-            printf("\n");
-            ast_print(node->as.try_expr.expr, indent + 1);
-            if (node->as.try_expr.else_block) {
-                ast_print(node->as.try_expr.else_block, indent + 1);
-            }
-            break;
-
-        case AST_UNSAFE_BLOCK:
-            printf("UnsafeBlock\n");
-            if (node->as.unsafe_block.block) {
-                ast_print(node->as.unsafe_block.block, indent + 1);
-            }
-            break;
-
-        case AST_ADDR_OF:
-            printf("AddrOf (&)\n");
-            ast_print(node->as.unary.operand, indent + 1);
-            break;
-
-        case AST_ADDR_OF_CONST:
-            printf("AddrOfConst (&const)\n");
-            ast_print(node->as.unary.operand, indent + 1);
-            break;
-
-        case AST_DEREF:
-            printf("Deref (*)\n");
-            ast_print(node->as.unary.operand, indent + 1);
-            break;
-
-        case AST_ARRAY_LITERAL:
-            printf("ArrayLiteral\n");
-            if (node->as.array_literal.type_) {
-                type_print(node->as.array_literal.type_, indent + 1);
-            }
-            for (size_t i = 0; i < node->as.array_literal.elem_count; i++) {
-                ast_print(node->as.array_literal.elems[i], indent + 1);
-            }
-            break;
-
-        case AST_STRUCT_LITERAL:
-            printf("StructLiteral\n");
-            if (node->as.struct_literal.type_) {
-                type_print(node->as.struct_literal.type_, indent + 1);
-            }
-            for (size_t i = 0; i < node->as.struct_literal.field_count; i++) {
-                print_indent(indent + 1);
-                printf("FieldInit: ");
-                print_sv(node->as.struct_literal.fields[i].name);
-                printf("\n");
-                ast_print(node->as.struct_literal.fields[i].value, indent + 2);
-            }
-            break;
-    }
+    print_node(node, indent);
 }

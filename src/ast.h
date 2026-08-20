@@ -1,100 +1,48 @@
+
 #ifndef RAYA_AST_H
 #define RAYA_AST_H
 
 #include "common.h"
 #include "string_view.h"
 #include "source_loc.h"
-#include "arena.h"
 #include "lexer.h"
+#include "arena.h"
 
 typedef struct AstNode AstNode;
 typedef struct TypeExpr TypeExpr;
 typedef struct Pattern Pattern;
 
-/* ============================================================================
- * Type expressions
- * ========================================================================== */
-
 typedef enum {
-    TYPE_NAMED,
-    TYPE_PRIMITIVE,
-    TYPE_POINTER,
-    TYPE_REFERENCE,
-    TYPE_SLICE,
-    TYPE_ARRAY,
-    TYPE_OPTIONAL,
-    TYPE_ERROR_UNION,
-    TYPE_FUNCTION,
-} TypeExprKind;
-
-struct TypeExpr {
-    TypeExprKind kind;
-    SourceLocation loc;
-    union {
-        struct { StringView name; TypeExpr** args; size_t arg_count; } named;
-        struct { StringView name; } primitive;
-        struct { TypeExpr* pointee; bool is_const; } ptr;
-        struct { TypeExpr* pointee; bool is_const; } ref;
-        struct { TypeExpr* element; bool is_const; } slice;
-        struct { AstNode* size; TypeExpr* element; } array;
-        struct { TypeExpr* inner; } optional;
-        struct { TypeExpr* inner; } error_union;
-        struct { TypeExpr** params; size_t param_count; TypeExpr* ret; } function;
-    } as;
-};
-
-/* ============================================================================
- * Patterns (for match arms)
- * ========================================================================== */
-
-typedef enum {
-    PAT_WILDCARD,
-    PAT_LITERAL,
-    PAT_IDENTIFIER,
-    PAT_ENUM_VARIANT,
-    PAT_STRUCT_FIELD,
-} PatternKind;
-
-struct Pattern {
-    PatternKind kind;
-    SourceLocation loc;
-    union {
-        struct { AstNode* literal; } literal;
-        struct { StringView name; } ident;
-        struct { StringView name; Pattern** fields; size_t field_count; } enum_variant;
-        struct { StringView name; Pattern** fields; size_t field_count; } struct_field;
-    } as;
-};
-
-/* ============================================================================
- * AST node kinds
- * ========================================================================== */
-
-typedef enum {
+    AST_COMPILATION_UNIT,
     AST_MODULE_DECL,
     AST_IMPORT_DECL,
     AST_FN_DECL,
     AST_STRUCT_DECL,
-    AST_ENUM_DECL,
     AST_UNION_DECL,
-    AST_TRAIT_DECL,
+    AST_ENUM_DECL,
+    AST_TRAITS_DECL,
     AST_EXTEND_DECL,
     AST_TYPE_ALIAS,
-    AST_TEST_DECL,
     AST_CONST_DECL,
     AST_VAR_DECL,
+    AST_TEST_DECL,
+    AST_FIELD_DECL,
+    AST_VARIANT_DECL,
+    AST_TRAIT_METHOD_DECL,
+    AST_PARAM_DECL,
+    AST_GENERIC_PARAM_DECL,
     AST_BLOCK,
-    AST_RETURN,
-    AST_IF,
-    AST_WHILE,
-    AST_FOR,
-    AST_DEFER,
-    AST_ERRDEFER,
-    AST_BREAK,
-    AST_CONTINUE,
-    AST_MATCH,
-    AST_ASSIGN,
     AST_EXPR_STMT,
+    AST_RETURN_STMT,
+    AST_IF_STMT,
+    AST_WHILE_STMT,
+    AST_FOR_STMT,
+    AST_DEFER_STMT,
+    AST_ERRDEFER_STMT,
+    AST_BREAK_STMT,
+    AST_CONTINUE_STMT,
+    AST_MATCH_STMT,
+    AST_ASSIGN_STMT,
     AST_INT_LITERAL,
     AST_FLOAT_LITERAL,
     AST_STRING_LITERAL,
@@ -103,74 +51,132 @@ typedef enum {
     AST_NULL_LITERAL,
     AST_UNDEFINED_LITERAL,
     AST_IDENTIFIER,
-    AST_BINARY,
-    AST_UNARY,
-    AST_FIELD_ACCESS,
-    AST_METHOD_CALL,
-    AST_CALL,
-    AST_INDEX,
-    AST_SLICE,
-    AST_CAST,
-    AST_TRY,
-    AST_TRY_ELSE,
-    AST_UNSAFE_BLOCK,
-    AST_ADDR_OF,
-    AST_ADDR_OF_CONST,
-    AST_DEREF,
+    AST_BINARY_EXPR,
+    AST_UNARY_EXPR,
+    AST_CALL_EXPR,
+    AST_METHOD_CALL_EXPR,
+    AST_FIELD_ACCESS_EXPR,
+    AST_INDEX_EXPR,
+    AST_SLICE_EXPR,
+    AST_CAST_EXPR,
+    AST_TRY_EXPR,
+    AST_ERROR_CAPTURE_EXPR,
+    AST_UNSAFE_BLOCK_EXPR,
     AST_ARRAY_LITERAL,
     AST_STRUCT_LITERAL,
+    AST_ARG_LIST,
+    AST_MATCH_ARM,
 } AstNodeKind;
 
-/* ============================================================================
- * Attribute  #[name(args)]
- * ========================================================================== */
+typedef enum {
+    TYPE_NAMED,
+    TYPE_REFERENCE,
+    TYPE_POINTER,
+    TYPE_SLICE,
+    TYPE_ARRAY,
+    TYPE_OPTIONAL,
+    TYPE_ERROR_UNION,
+    TYPE_FUNCTION,
+} TypeExprKind;
+
+typedef enum {
+    PATTERN_WILDCARD,
+    PATTERN_LITERAL,
+    PATTERN_IDENTIFIER,
+    PATTERN_ENUM_VARIANT,
+    PATTERN_STRUCT_FIELD,
+} PatternKind;
+
+typedef struct AstNodeList {
+    AstNode** items;
+    size_t count;
+    size_t capacity;
+} AstNodeList;
+
+typedef struct TypeExprList {
+    TypeExpr** items;
+    size_t count;
+    size_t capacity;
+} TypeExprList;
+
+typedef struct PatternList {
+    Pattern** items;
+    size_t count;
+    size_t capacity;
+} PatternList;
+
+typedef struct StringViewList {
+    StringView* items;
+    size_t count;
+    size_t capacity;
+} StringViewList;
 
 typedef struct {
     StringView name;
-    AstNode** args;
-    size_t arg_count;
+    AstNodeList args;
     SourceLocation loc;
 } Attribute;
 
-/* ============================================================================
- * Parameter / Field / Variant descriptors
- * ========================================================================== */
-
 typedef struct {
-    StringView name;
-    TypeExpr* type_;
-    AstNode* default_value;
-    bool is_self;
-    bool is_const_self;
-    bool has_type;
-    SourceLocation loc;
-} ParamDesc;
+    Attribute* items;
+    size_t count;
+    size_t capacity;
+} AttributeList;
 
-typedef struct {
-    StringView name;
-    TypeExpr* type_;
-    AstNode* default_value;
-    bool is_pub;
+struct TypeExpr {
+    TypeExprKind kind;
     SourceLocation loc;
-} FieldDesc;
+    union {
+        struct {
+            StringView name;
+            TypeExprList generic_args;
+        } named;
+        struct {
+            TypeExpr* child;
+            bool is_const;
+        } unary;
+        struct {
+            AstNode* length;
+            TypeExpr* elem;
+        } array;
+        struct {
+            TypeExprList params;
+            TypeExpr* ret;
+        } func;
+    };
+};
 
-typedef struct {
-    StringView name;
-    TypeExpr* payload_type;
-    AstNode* discriminant;
+struct Pattern {
+    PatternKind kind;
     SourceLocation loc;
-} VariantDesc;
-
-/* ============================================================================
- * AST node (tagged union)
- * ========================================================================== */
+    union {
+        AstNode* literal;
+        StringView ident;
+        struct {
+            StringView name;
+            Pattern* inner;
+        } enum_variant;
+        struct {
+            StringViewList fields;
+            PatternList patterns;
+        } struct_field;
+    };
+};
 
 struct AstNode {
     AstNodeKind kind;
     SourceLocation loc;
     union {
-        struct { StringView name; AstNode** decl; size_t decl_count; } module_decl;
-        struct { StringView name; StringView* parts; size_t part_count; StringView alias; bool has_alias; } import_decl;
+        struct {
+            StringView module_name;
+            AstNodeList imports;
+            AstNodeList decls;
+        } compilation_unit;
+        struct { StringView name; } module_decl;
+        struct {
+            StringViewList parts;
+            StringView alias;
+        } import_decl;
         struct {
             StringView name;
             bool is_pub;
@@ -178,153 +184,295 @@ struct AstNode {
             bool is_unsafe;
             bool is_extern;
             StringView extern_abi;
-            TypeExpr** generic_params; size_t generic_param_count;
-            ParamDesc* params; size_t param_count;
-            TypeExpr* return_type;
+            AstNodeList generic_params;
+            AstNodeList params;
+            TypeExpr* ret_type;
             AstNode* body;
-            Attribute* attrs; size_t attr_count;
+            AttributeList attrs;
         } fn_decl;
         struct {
             StringView name;
             bool is_pub;
-            TypeExpr** generic_params; size_t generic_param_count;
-            FieldDesc* fields; size_t field_count;
-            Attribute* attrs; size_t attr_count;
+            AstNodeList generic_params;
+            AstNodeList fields;
+            AttributeList attrs;
         } struct_decl;
         struct {
             StringView name;
             bool is_pub;
-            VariantDesc* variants; size_t variant_count;
-            Attribute* attrs; size_t attr_count;
+            AstNodeList variants;
+            AttributeList attrs;
         } enum_decl;
         struct {
             StringView name;
             bool is_pub;
-            AstNode** methods; size_t method_count;
-            Attribute* attrs; size_t attr_count;
-        } trait_decl;
+            AstNodeList methods;
+            AttributeList attrs;
+        } traits_decl;
         struct {
             StringView target_name;
-            TypeExpr** generic_params; size_t generic_param_count;
-            StringView* trait_names; size_t trait_count;
-            AstNode** methods; size_t method_count;
+            AstNodeList generic_params;
+            StringViewList trait_names;
+            AstNodeList methods;
+            AttributeList attrs;
         } extend_decl;
-        struct { StringView name; bool is_pub; TypeExpr* type_; } type_alias;
-        struct { StringView name; AstNode* body; } test_decl;
-        struct { StringView name; TypeExpr* type_; AstNode* initializer; bool is_pub; } var_decl;
-        struct { AstNode** stmts; size_t stmt_count; AstNode* trailing_expr; } block;
-        struct { AstNode* value; } return_stmt;
-        struct { AstNode* condition; AstNode* then_block; AstNode* else_block; } if_stmt;
-        struct { AstNode* condition; AstNode* body; } while_stmt;
-        struct { StringView var_name; TypeExpr* var_type; AstNode* iterable; AstNode* body; } for_stmt;
-        struct { AstNode* body; } defer_stmt;
-        struct { AstNode* value; struct { Pattern* pat; AstNode* expr; SourceLocation arrow_loc; }* arms; size_t arm_count; } match_stmt;
-        struct { TokenKind op; AstNode* left; AstNode* right; } assign;
+        struct {
+            StringView name;
+            bool is_pub;
+            TypeExpr* type;
+            AttributeList attrs;
+        } type_alias;
+        struct {
+            StringView name;
+            bool is_pub;
+            bool is_comptime;
+            TypeExpr* type;
+            AstNode* init;
+            AttributeList attrs;
+        } var_decl;
+        struct {
+            StringView name;
+            AstNode* body;
+            AttributeList attrs;
+        } test_decl;
+        struct {
+            StringView name;
+            bool is_pub;
+            TypeExpr* type;
+            AstNode* default_value;
+            AttributeList attrs;
+        } field_decl;
+        struct {
+            StringView name;
+            TypeExpr* payload_type;
+            AstNode* discriminant;
+        } variant_decl;
+        struct {
+            StringView name;
+            bool is_pub;
+            AstNodeList params;
+            TypeExpr* ret_type;
+        } trait_method_decl;
+        struct {
+            StringView name;
+            TypeExpr* type;
+            AstNode* default_value;
+            bool is_comptime;
+            bool is_self;
+        } param_decl;
+        struct {
+            StringView name;
+            StringViewList trait_constraints;
+        } generic_param_decl;
+        struct {
+            AstNodeList stmts;
+            AstNode* trailing_expr;
+        } block;
         struct { AstNode* expr; } expr_stmt;
+        struct { AstNode* value; } return_stmt;
+        struct {
+            AstNode* condition;
+            AstNode* then_block;
+            AstNode* else_block;
+        } if_stmt;
+        struct {
+            AstNode* condition;
+            AstNode* body;
+        } while_stmt;
+        struct {
+            StringView var_name;
+            TypeExpr* var_type;
+            AstNode* iterable;
+            AstNode* body;
+        } for_stmt;
+        struct { AstNode* expr; } defer_stmt;
+        struct { AstNode* body; } errdefer_stmt;
+        struct { /* nothing */ } break_stmt;
+        struct {
+            AstNode* expr;
+            AstNodeList arms;
+        } match_stmt;
+        struct {
+            Pattern* pattern;
+            AstNode* expr;
+        } match_arm;
+        struct {
+            TokenKind op;
+            AstNode* lhs;
+            AstNode* rhs;
+        } assign_stmt;
         struct { int64_t value; } int_literal;
         struct { double value; } float_literal;
         struct { StringView value; } string_literal;
-        struct { uint8_t value; } char_literal;
+        struct { StringView value; } char_literal;
         struct { bool value; } bool_literal;
         struct { StringView name; } identifier;
-        struct { TokenKind op; AstNode* left; AstNode* right; } binary;
-        struct { TokenKind op; AstNode* operand; } unary;
-        struct { AstNode* object; StringView field; } field_access;
-        struct { AstNode* object; StringView method; AstNode** args; size_t arg_count; } method_call;
-        struct { AstNode* callee; AstNode** args; size_t arg_count; } call;
-        struct { AstNode* object; AstNode* index; } index;
-        struct { AstNode* object; AstNode* start; AstNode* end; } slice;
-        struct { AstNode* expr; TypeExpr* type_; } cast;
-        struct { AstNode* expr; StringView err_name; AstNode* else_block; bool has_else; } try_expr;
-        struct { AstNode* block; } unsafe_block;
-        struct { TypeExpr* type_; AstNode** elems; size_t elem_count; AstNode* count; } array_literal;
-        struct { TypeExpr* type_; struct { StringView name; AstNode* value; }* fields; size_t field_count; } struct_literal;
-    } as;
+        struct {
+            TokenKind op;
+            AstNode* left;
+            AstNode* right;
+        } binary_expr;
+        struct {
+            TokenKind op;
+            AstNode* operand;
+        } unary_expr;
+        struct {
+            AstNode* callee;
+            AstNodeList args;
+        } call_expr;
+        struct {
+            AstNode* receiver;
+            StringView method_name;
+            AstNodeList args;
+        } method_call_expr;
+        struct {
+            AstNode* object;
+            StringView field_name;
+        } field_access_expr;
+        struct {
+            AstNode* object;
+            AstNode* index;
+        } index_expr;
+        struct {
+            AstNode* object;
+            AstNode* start;
+            AstNode* end;
+        } slice_expr;
+        struct {
+            AstNode* expr;
+            TypeExpr* type;
+        } cast_expr;
+        struct {
+            AstNode* expr;
+        } try_expr;
+        struct {
+            AstNode* expr;
+            StringView err_name;
+            AstNode* fallback;
+        } error_capture_expr;
+        struct { AstNode* body; } unsafe_block_expr;
+        struct {
+            TypeExpr* explicit_type;
+            AstNode* length;
+            AstNodeList elements;
+            bool sentinel;
+        } array_literal;
+        struct {
+            TypeExpr* type;
+            AstNodeList fields;
+        } struct_literal;
+        struct { AstNodeList args; } arg_list;
+    };
 };
 
-/* ============================================================================
- * Arena helpers
- * ========================================================================== */
+AstNode* ast_new_compilation_unit(Arena* arena, SourceLocation loc);
+AstNode* ast_new_module_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_import_decl(Arena* arena, StringView first, SourceLocation loc);
+AstNode* ast_new_fn_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_struct_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_union_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_enum_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_traits_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_extend_decl(Arena* arena, StringView target, SourceLocation loc);
+AstNode* ast_new_type_alias(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_const_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_var_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_test_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_field_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_variant_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_trait_method_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_param_decl(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_generic_param_decl(Arena* arena, StringView name, SourceLocation loc);
 
-void ast_set_arena(Arena* arena);
-void* ast_alloc(size_t size);
-void* ast_alloc_n(size_t count, size_t size);
-char* ast_strdup(const char* s);
+AstNode* ast_new_block(Arena* arena, SourceLocation loc);
+AstNode* ast_new_expr_stmt(Arena* arena, AstNode* expr, SourceLocation loc);
+AstNode* ast_new_return(Arena* arena, AstNode* value, SourceLocation loc);
+AstNode* ast_new_if(Arena* arena, AstNode* cond, AstNode* then_block, AstNode* else_block, SourceLocation loc);
+AstNode* ast_new_while(Arena* arena, AstNode* cond, AstNode* body, SourceLocation loc);
+AstNode* ast_new_for(Arena* arena, StringView var, TypeExpr* type, AstNode* iterable, AstNode* body, SourceLocation loc);
+AstNode* ast_new_defer(Arena* arena, AstNode* expr, SourceLocation loc);
+AstNode* ast_new_errdefer(Arena* arena, AstNode* body, SourceLocation loc);
+AstNode* ast_new_break(Arena* arena, SourceLocation loc);
+AstNode* ast_new_continue(Arena* arena, SourceLocation loc);
+AstNode* ast_new_match(Arena* arena, AstNode* expr, SourceLocation loc);
+AstNode* ast_new_match_arm(Arena* arena, Pattern* pat, AstNode* expr, SourceLocation loc);
+AstNode* ast_new_assign(Arena* arena, TokenKind op, AstNode* lhs, AstNode* rhs, SourceLocation loc);
 
-/* ============================================================================
- * Constructors
- * ========================================================================== */
+AstNode* ast_new_int_literal(Arena* arena, int64_t value, SourceLocation loc);
+AstNode* ast_new_float_literal(Arena* arena, double value, SourceLocation loc);
+AstNode* ast_new_string_literal(Arena* arena, StringView value, SourceLocation loc);
+AstNode* ast_new_char_literal(Arena* arena, StringView value, SourceLocation loc);
+AstNode* ast_new_bool_literal(Arena* arena, bool value, SourceLocation loc);
+AstNode* ast_new_null_literal(Arena* arena, SourceLocation loc);
+AstNode* ast_new_undefined_literal(Arena* arena, SourceLocation loc);
+AstNode* ast_new_identifier(Arena* arena, StringView name, SourceLocation loc);
+AstNode* ast_new_binary(Arena* arena, TokenKind op, AstNode* left, AstNode* right, SourceLocation loc);
+AstNode* ast_new_unary(Arena* arena, TokenKind op, AstNode* operand, SourceLocation loc);
+AstNode* ast_new_call(Arena* arena, AstNode* callee, SourceLocation loc);
+AstNode* ast_new_method_call(Arena* arena, AstNode* receiver, StringView method, SourceLocation loc);
+AstNode* ast_new_field_access(Arena* arena, AstNode* object, StringView field, SourceLocation loc);
+AstNode* ast_new_index(Arena* arena, AstNode* object, AstNode* index, SourceLocation loc);
+AstNode* ast_new_slice(Arena* arena, AstNode* object, AstNode* start, AstNode* end, SourceLocation loc);
+AstNode* ast_new_cast(Arena* arena, AstNode* expr, TypeExpr* type, SourceLocation loc);
+AstNode* ast_new_try(Arena* arena, AstNode* expr, SourceLocation loc);
+AstNode* ast_new_error_capture(Arena* arena, AstNode* expr, StringView err_name, AstNode* fallback, SourceLocation loc);
+AstNode* ast_new_unsafe_block(Arena* arena, AstNode* body, SourceLocation loc);
+AstNode* ast_new_array_literal(Arena* arena, SourceLocation loc);
+AstNode* ast_new_struct_literal(Arena* arena, TypeExpr* type, SourceLocation loc);
 
-AstNode* ast_new_module_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_import_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_fn_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_struct_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_enum_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_union_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_trait_decl(StringView name, SourceLocation loc);
-AstNode* ast_new_extend_decl(StringView target, SourceLocation loc);
-AstNode* ast_new_type_alias(StringView name, SourceLocation loc);
-AstNode* ast_new_test_decl(StringView name, AstNode* body, SourceLocation loc);
-AstNode* ast_new_const_decl(StringView name, TypeExpr* type_, AstNode* init, SourceLocation loc);
-AstNode* ast_new_var_decl(StringView name, TypeExpr* type_, AstNode* init, SourceLocation loc);
-AstNode* ast_new_block(SourceLocation loc);
-AstNode* ast_new_return(AstNode* value, SourceLocation loc);
-AstNode* ast_new_if(AstNode* cond, AstNode* then_, AstNode* else_, SourceLocation loc);
-AstNode* ast_new_while(AstNode* cond, AstNode* body, SourceLocation loc);
-AstNode* ast_new_for(StringView var, TypeExpr* type_, AstNode* iter, AstNode* body, SourceLocation loc);
-AstNode* ast_new_defer(AstNode* body, SourceLocation loc);
-AstNode* ast_new_errdefer(AstNode* body, SourceLocation loc);
-AstNode* ast_new_break(SourceLocation loc);
-AstNode* ast_new_continue(SourceLocation loc);
-AstNode* ast_new_match(AstNode* value, SourceLocation loc);
-AstNode* ast_new_assign(TokenKind op, AstNode* left, AstNode* right, SourceLocation loc);
-AstNode* ast_new_expr_stmt(AstNode* expr, SourceLocation loc);
+void ast_node_list_init(Arena* arena, AstNodeList* list);
+void ast_node_list_push(Arena* arena, AstNodeList* list, AstNode* node);
+void type_expr_list_init(Arena* arena, TypeExprList* list);
+void type_expr_list_push(Arena* arena, TypeExprList* list, TypeExpr* type);
+void string_view_list_init(Arena* arena, StringViewList* list);
+void string_view_list_push(Arena* arena, StringViewList* list, StringView sv);
+void pattern_list_init(Arena* arena, PatternList* list);
+void pattern_list_push(Arena* arena, PatternList* list, Pattern* pat);
+void attribute_list_init(Arena* arena, AttributeList* list);
+void attribute_list_push(Arena* arena, AttributeList* list, Attribute attr);
 
-AstNode* ast_new_int_literal(int64_t value, SourceLocation loc);
-AstNode* ast_new_float_literal(double value, SourceLocation loc);
-AstNode* ast_new_string_literal(StringView value, SourceLocation loc);
-AstNode* ast_new_char_literal(uint8_t value, SourceLocation loc);
-AstNode* ast_new_bool_literal(bool value, SourceLocation loc);
-AstNode* ast_new_null_literal(SourceLocation loc);
-AstNode* ast_new_undefined_literal(SourceLocation loc);
-AstNode* ast_new_identifier(StringView name, SourceLocation loc);
-AstNode* ast_new_binary(TokenKind op, AstNode* left, AstNode* right, SourceLocation loc);
-AstNode* ast_new_unary(TokenKind op, AstNode* operand, SourceLocation loc);
-AstNode* ast_new_field_access(AstNode* object, StringView field, SourceLocation loc);
-AstNode* ast_new_method_call(AstNode* object, StringView method, AstNode** args, size_t arg_count, SourceLocation loc);
-AstNode* ast_new_call(AstNode* callee, AstNode** args, size_t arg_count, SourceLocation loc);
-AstNode* ast_new_index(AstNode* object, AstNode* index, SourceLocation loc);
-AstNode* ast_new_slice(AstNode* object, AstNode* start, AstNode* end, SourceLocation loc);
-AstNode* ast_new_cast(AstNode* expr, TypeExpr* type_, SourceLocation loc);
-AstNode* ast_new_try(AstNode* expr, SourceLocation loc);
-AstNode* ast_new_try_else(AstNode* expr, StringView err_name, AstNode* else_block, SourceLocation loc);
-AstNode* ast_new_unsafe_block(AstNode* block, SourceLocation loc);
-AstNode* ast_new_addr_of(AstNode* operand, SourceLocation loc);
-AstNode* ast_new_addr_of_const(AstNode* operand, SourceLocation loc);
-AstNode* ast_new_deref(AstNode* operand, SourceLocation loc);
-AstNode* ast_new_array_literal(TypeExpr* type_, AstNode** elems, size_t elem_count, AstNode* count, SourceLocation loc);
-AstNode* ast_new_struct_literal(TypeExpr* type_, SourceLocation loc);
+void ast_import_add_part(Arena* arena, AstNode* import_decl, StringView part);
+void ast_import_set_alias(AstNode* import_decl, StringView alias);
+void ast_set_module(AstNode* unit, StringView name);
+void ast_add_import(Arena* arena, AstNode* unit, AstNode* import_decl);
+void ast_add_decl(Arena* arena, AstNode* unit, AstNode* decl);
+void ast_block_add_stmt(Arena* arena, AstNode* block, AstNode* stmt);
+void ast_block_set_trailing(AstNode* block, AstNode* expr);
+void ast_fn_add_param(Arena* arena, AstNode* fn, AstNode* param);
+void ast_fn_add_generic(Arena* arena, AstNode* fn, AstNode* param);
+void ast_struct_add_field(Arena* arena, AstNode* s, AstNode* field);
+void ast_struct_add_generic(Arena* arena, AstNode* s, AstNode* param);
+void ast_enum_add_variant(Arena* arena, AstNode* e, AstNode* variant);
+void ast_traits_add_method(Arena* arena, AstNode* traits, AstNode* method);
+void ast_extend_add_method(Arena* arena, AstNode* extend, AstNode* method);
+void ast_extend_add_generic(Arena* arena, AstNode* extend, AstNode* param);
+void ast_call_add_arg(Arena* arena, AstNode* call, AstNode* arg);
+void ast_array_add_elem(Arena* arena, AstNode* arr, AstNode* elem);
+void ast_struct_add_field_init(Arena* arena, AstNode* lit, AstNode* field_init);
+void ast_match_add_arm(Arena* arena, AstNode* match, AstNode* arm);
+void ast_extend_add_trait(Arena* arena, AstNode* extend, StringView trait);
 
-TypeExpr* type_new_named(StringView name, SourceLocation loc);
-TypeExpr* type_new_primitive(StringView name, SourceLocation loc);
-TypeExpr* type_new_pointer(TypeExpr* pointee, bool is_const, SourceLocation loc);
-TypeExpr* type_new_reference(TypeExpr* pointee, bool is_const, SourceLocation loc);
-TypeExpr* type_new_slice(TypeExpr* element, bool is_const, SourceLocation loc);
-TypeExpr* type_new_array(AstNode* size, TypeExpr* element, SourceLocation loc);
-TypeExpr* type_new_optional(TypeExpr* inner, SourceLocation loc);
-TypeExpr* type_new_error_union(TypeExpr* inner, SourceLocation loc);
-TypeExpr* type_new_function(TypeExpr** params, size_t param_count, TypeExpr* ret, SourceLocation loc);
+TypeExpr* type_new_named(Arena* arena, StringView name, SourceLocation loc);
+TypeExpr* type_new_reference(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc);
+TypeExpr* type_new_pointer(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc);
+TypeExpr* type_new_slice(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc);
+TypeExpr* type_new_array(Arena* arena, AstNode* length, TypeExpr* elem, SourceLocation loc);
+TypeExpr* type_new_optional(Arena* arena, TypeExpr* child, SourceLocation loc);
+TypeExpr* type_new_error_union(Arena* arena, TypeExpr* child, SourceLocation loc);
+TypeExpr* type_new_function(Arena* arena, SourceLocation loc);
+void type_add_generic_arg(Arena* arena, TypeExpr* type, TypeExpr* arg);
+void type_func_add_param(Arena* arena, TypeExpr* func, TypeExpr* param);
+void type_func_set_ret(TypeExpr* func, TypeExpr* ret);
 
-Pattern* pat_new_wildcard(SourceLocation loc);
-Pattern* pat_new_literal(AstNode* literal, SourceLocation loc);
-Pattern* pat_new_identifier(StringView name, SourceLocation loc);
-Pattern* pat_new_enum_variant(StringView name, Pattern** fields, size_t field_count, SourceLocation loc);
-Pattern* pat_new_struct_field(StringView name, Pattern** fields, size_t field_count, SourceLocation loc);
+Pattern* pattern_new_wildcard(Arena* arena, SourceLocation loc);
+Pattern* pattern_new_literal(Arena* arena, AstNode* lit, SourceLocation loc);
+Pattern* pattern_new_identifier(Arena* arena, StringView name, SourceLocation loc);
+Pattern* pattern_new_enum_variant(Arena* arena, StringView name, Pattern* inner, SourceLocation loc);
+Pattern* pattern_new_struct_field(Arena* arena, SourceLocation loc);
+void pattern_struct_add_field(Arena* arena, Pattern* pat, StringView name, Pattern* field_pat);
 
-/* ============================================================================
- * AST debug print
- * ========================================================================== */
-
+bool sv_is_primitive_type(StringView sv);
+bool token_is_assignment_op(TokenKind kind);
 void ast_print(AstNode* node, int indent);
 
 #endif
