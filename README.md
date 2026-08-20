@@ -1,31 +1,29 @@
-Raya Compiler (rayac) — Phase 0 & 2 Complete
+Raya Compiler (rayac) — Phase 0, 2 & 3 Complete
+plain
 
-    Language version: Raya Path A v0.7.6
-    Repo: https://github.com/raya-lang-org/rayac
-    Lead: You | Engine: Kimi (Moonshot AI)
+Language version: Raya Path A v0.7.6
+Repo: https://github.com/raya-lang-org/rayac
+Lead: You | Engine: Kimi (Moonshot AI)
 
-
-| Feature                                               | Status                   |
-| ----------------------------------------------------- | ------------------------ |
-| Symbol tables (module + function + block scopes)      | ✅                        |
-| Primitive type canonicalization (i32, f64, etc.)      | ✅                        |
-| Composite types from AST (\*T, \&T, \[]T, ?T, !T, fn) | ✅                        |
-| Undeclared identifier errors                          | ✅                        |
-| Binary expression type checking (+, -, ==, etc.)      | ✅                        |
-| Prefix operators (&, \*, -, !, ~)                     | ✅                        |
-| Return type checking                                  | ✅                        |
-| Variable declaration + inference                      | ✅                        |
-| if/while/for/defer/break/continue                     | ✅                        |
-| as casts, try, unsafe blocks                          | ✅                        |
-| Generic params (stub)                                 | ✅                        |
-| Self parameter resolution                             | ⏳ (needs struct context) |
-| Struct/union/enum body checking                       | ⏳                        |
-| Trait checking / extend validation                    | ⏳                        |
-| Generic monomorphization                              | ⏳                        |
-| Comptime evaluation                                   | ⏳                        |
-| Method call / field access type checking              | ⏳                        |
-
-
+Table
+Feature	Status
+Symbol tables (module + function + block scopes)	✅
+Primitive type canonicalization (i32, f64, etc.)	✅
+Composite types from AST (*T, &T, []T, ?T, !T, fn)	✅
+Undeclared identifier errors	✅
+Binary expression type checking (+, -, ==, etc.)	✅
+Prefix operators (&, *, -, !, ~)	✅
+Return type checking	✅
+Variable declaration + inference	✅
+if/while/for/defer/break/continue	✅
+as casts, try, unsafe blocks	✅
+Generic params (stub)	✅
+Self parameter resolution	⏳ (needs struct context)
+Struct/union/enum body checking	⏳
+Trait checking / extend validation	⏳
+Generic monomorphization	⏳
+Comptime evaluation	⏳
+Method call / field access type checking	⏳
 Quick Start
 bash
 
@@ -38,6 +36,9 @@ make test-lexer
 # Run parser tests
 make test-parser
 
+# Run semantic analysis tests
+make test-sema
+
 # Run everything
 make test
 
@@ -49,18 +50,22 @@ plain
 
 rayac/
 ├── src/
-│   ├── main.c          # CLI entry, --dump-tokens, --dump-ast, --test-lexer, --test-parser
+│   ├── main.c          # CLI entry, --dump-tokens, --dump-ast, --check, --test-lexer, --test-parser, --test-sema
 │   ├── lexer.h/c       # Phase 0: Tokenizer
 │   ├── parser.h/c      # Phase 2: Recursive descent + Pratt parser
 │   ├── ast.h/c         # Phase 2: AST nodes, types, patterns, S-expr printer
+│   ├── type.h/c        # Phase 3: Canonical type graph, unification, coercion
+│   ├── symbol.h/c      # Phase 3: Symbol kinds, scope chains, lookup tables
+│   ├── sema.h/c        # Phase 3: Semantic analyzer — two-pass resolution
 │   ├── arena.h/c       # Arena allocator (linked chunks)
 │   ├── diag.h/c        # Diagnostic engine with source context
 │   ├── string_view.h   # StringView + SV_FMT/SV_ARG macros
 │   ├── source_loc.h    # SourceLocation (file, line, col, offset)
 │   └── common.h        # RAYA_VERSION, std includes, extern flags
 ├── tests/
-│   ├── lexer/*.raya + .expected   # Token-kind regression tests
-│   └── parser/*.raya + .expected  # AST-kind regression tests
+│   ├── lexer/*.raya + .expected    # Token-kind regression tests
+│   ├── parser/*.raya + .expected   # AST-kind regression tests
+│   └── sema/*.raya + .expected     # Semantic error regression tests
 ├── bin/raya            # Compiler binary
 └── Makefile
 
@@ -166,6 +171,52 @@ bash
 ./bin/raya --dump-ast file.raya
 
 Pretty-prints full S-expression AST with types and values.
+Phase 3: Semantic Analysis / Type Checker ✅
+Status: Complete, compiles clean, sema tests passing.
+New Files
+
+    type.h/c — Canonical type graph with hash-consing (deduplicated SType* per concrete shape)
+    symbol.h/c — Symbol kinds, scope chains, hash-table lookups
+    sema.h/c — Two-pass semantic analyzer
+
+Design
+
+    Arena-everything — Types and symbols live in the same arena as AST nodes. No free() during checking.
+    Canonical types — Every concrete type is hashed and deduplicated in TypeTable. *i32 in function A and *i32 in function B point to the same SType*.
+    Two-pass resolution:
+        Pass 1 (Collect): Walk top-level decls, register symbols in module scope.
+        Pass 2 (Resolve): Walk bodies, resolve identifiers, infer types, check constraints.
+    Error recovery — On unknown identifier, bind to error state and keep checking. Don't cascade.
+
+Implemented Features
+
+    Symbol tables: module scope, function scope, block scope, for-loop scope
+    Primitive type canonicalization: void, bool, i8–i128, u8–u128, isize, usize, f32, f64, noreturn
+    Composite type resolution from AST: *T, &T, []T, [N]T, ?T, !T, fn(...) -> T
+    Undeclared identifier detection
+    Binary expression type checking: arithmetic, comparison, logical, bitwise
+    Prefix operator type checking: &, *, -, !, ~
+    Return type compatibility checking
+    Variable declaration with explicit type or inference
+    Assignment type compatibility
+    if/while condition boolean checks
+    for loop variable binding
+    as cast, try, unsafe block validation
+    Generic parameter stubs (collected, not yet monomorphized)
+    Self parameter binding in function scopes
+
+Test Mode
+bash
+
+./bin/raya --test-sema file.raya
+
+Outputs ok if no errors, or one error message per line (for cmp -s regression testing).
+Check Mode
+bash
+
+./bin/raya --check file.raya
+
+Runs full semantic analysis and prints diagnostics via the existing DiagnosticEngine.
 Build System
 Table
 Target	Action
@@ -173,20 +224,20 @@ make	Release build (-O2)
 make debug	Debug build (-g -fsanitize=address)
 make test-lexer	Run all tests/lexer/*.raya vs .expected
 make test-parser	Run all tests/parser/*.raya vs .expected
-make test	Run both lexer and parser tests
+make test-sema	Run all tests/sema/*.raya vs .expected
+make test	Run lexer + parser + sema tests
 make clean	Wipe obj/ and bin/
 Tests use cmp -s (binary compare) — much faster than the old awk + diff pipeline.
-What's Next: Phase 3 (Semantic Analysis / Type Checker)
+What's Next: Phase 4 (Advanced Semantic Analysis)
 Planned work:
 
-    Symbol table — scopes, declarations, lookups
-    Name resolution — resolve identifiers to decls, check imports
-    Type inference — infer var and missing return types
-    Type checking — validate expressions, assignments, function calls
-    Self resolution — resolve Self to enclosing struct/union/enum/extend
-    Trait checking — verify extend implements all trait methods
+    Struct literal type checking — resolve Type{ field: value } against struct definition
+    Field access resolution — obj.field lookup in struct field tables
+    Method call resolution — obj.method(args) dispatch
+    Self resolution — resolve Self to enclosing struct/union/enum/extend type
+    Trait checking — verify extend implements all required trait methods
     Generic monomorphization — instantiate Vec3(f32) into concrete types
-    Error propagation — validate try / !T usage
+    Error propagation — validate try / !T usage across call chains
     Comptime evaluation — constant-fold comptime expressions
     Builder API — generate DeclDescriptor / Expr / Stmt structs for comptime VM
 
@@ -209,3 +260,5 @@ Notes for Future Sessions
     AST uses arena allocation. All nodes/lists live in the arena passed to parser_init. Free with arena_free_all().
     Generic params use a 3-token lookahead (( ident : type) to distinguish from regular params. Fragile — document if grammar changes.
     Struct literal ambiguity: if foo { ... } could be parsed as struct literal + block. Currently resolved by greedy struct literal parsing. If this breaks, add context-sensitive check.
+    Sema uses two passes. Pass 1 collects top-level symbols; Pass 2 resolves bodies. If adding new top-level decls, update both sema_collect_decls and sema_resolve_bodies.
+    Type table is hash-consed. All st_* constructors return canonical pointers. Use st_eq(a, b) (pointer compare) rather than deep comparison.
