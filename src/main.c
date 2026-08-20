@@ -1,3 +1,4 @@
+
 #include "common.h"
 #include "arena.h"
 #include "string_view.h"
@@ -9,6 +10,8 @@
 bool g_dump_tokens = false;
 bool g_dump_ast = false;
 bool g_expand = false;
+bool g_test_lexer = false;
+bool g_test_parser = false;
 
 static void print_usage(const char* prog) {
     fprintf(stderr, "Raya compiler %s\n", RAYA_VERSION);
@@ -17,6 +20,8 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --dump-tokens    Print all tokens after lexing\n");
     fprintf(stderr, "  --dump-ast       Print AST after parsing\n");
     fprintf(stderr, "  --expand         Print expanded source after comptime\n");
+    fprintf(stderr, "  --test-lexer     Output token kinds only (for tests)\n");
+    fprintf(stderr, "  --test-parser    Output AST kinds only (for tests)\n");
     fprintf(stderr, "  -h, --help       Show this help\n");
     fprintf(stderr, "  -v, --version    Show version\n");
 }
@@ -27,50 +32,38 @@ static char* read_file(const char* path, size_t* out_len) {
         fprintf(stderr, "error: cannot open file '%s'\n", path);
         return NULL;
     }
-
     if (fseek(f, 0, SEEK_END) != 0) {
         fprintf(stderr, "error: failed to seek file '%s'\n", path);
         fclose(f);
         return NULL;
     }
-
     long file_len = ftell(f);
-
     if (file_len < 0) {
         fprintf(stderr, "error: failed to determine size of '%s'\n", path);
         fclose(f);
         return NULL;
     }
-
     if (fseek(f, 0, SEEK_SET) != 0) {
         fprintf(stderr, "error: failed to seek file '%s'\n", path);
         fclose(f);
         return NULL;
     }
-
     size_t len = (size_t)file_len;
-
     char* buf = (char*)malloc(len + 1);
-
     if (!buf) {
         fprintf(stderr, "error: out of memory\n");
         fclose(f);
         return NULL;
     }
-
     size_t read = fread(buf, 1, len, f);
-
     if (read != len && ferror(f)) {
         fprintf(stderr, "error: failed to read '%s'\n", path);
         free(buf);
         fclose(f);
         return NULL;
     }
-
     buf[read] = '\0';
-
     fclose(f);
-
     *out_len = read;
     return buf;
 }
@@ -79,7 +72,6 @@ static void dump_tokens(Lexer* lexer) {
     printf("=== TOKENS ===\n");
     printf("%-20s %-30s %s\n", "KIND", "TEXT", "LOCATION");
     printf("%-20s %-30s %s\n", "----", "----", "--------");
-
     Token tok;
     int count = 0;
     while ((tok = lexer_next(lexer)).kind != TOK_EOF) {
@@ -98,62 +90,135 @@ static void dump_tokens(Lexer* lexer) {
     printf("\nTotal: %d tokens\n", count);
 }
 
+static void test_lexer(Lexer* lexer) {
+    Token tok;
+    while ((tok = lexer_next(lexer)).kind != TOK_EOF) {
+        printf("%s\n", token_kind_name(tok.kind));
+    }
+}
+
+static void test_parser(AstNode* node, int depth) {
+    if (!node) return;
+    const char* names[] = {
+        "COMPILATION_UNIT", "MODULE_DECL", "IMPORT_DECL", "FN_DECL",
+        "STRUCT_DECL", "UNION_DECL", "ENUM_DECL", "TRAITS_DECL",
+        "EXTEND_DECL", "TYPE_ALIAS", "CONST_DECL", "VAR_DECL",
+        "TEST_DECL", "FIELD_DECL", "VARIANT_DECL", "TRAIT_METHOD_DECL",
+        "PARAM_DECL", "GENERIC_PARAM_DECL", "BLOCK", "EXPR_STMT",
+        "RETURN_STMT", "IF_STMT", "WHILE_STMT", "FOR_STMT",
+        "DEFER_STMT", "ERRDEFER_STMT", "BREAK_STMT", "CONTINUE_STMT",
+        "MATCH_STMT", "ASSIGN_STMT", "INT_LITERAL", "FLOAT_LITERAL",
+        "STRING_LITERAL", "CHAR_LITERAL", "BOOL_LITERAL", "NULL_LITERAL",
+        "UNDEFINED_LITERAL", "IDENTIFIER", "BINARY_EXPR", "UNARY_EXPR",
+        "CALL_EXPR", "METHOD_CALL_EXPR", "FIELD_ACCESS_EXPR", "INDEX_EXPR",
+        "SLICE_EXPR", "CAST_EXPR", "TRY_EXPR", "ERROR_CAPTURE_EXPR",
+        "UNSAFE_BLOCK_EXPR", "ARRAY_LITERAL", "STRUCT_LITERAL", "ARG_LIST",
+        "MATCH_ARM"
+    };
+    const char* name = (node->kind >= 0 && node->kind < (int)(sizeof(names)/sizeof(names[0])))
+        ? names[node->kind] : "UNKNOWN";
+    for (int i = 0; i < depth; i++) printf("  ");
+    printf("%s\n", name);
+    switch (node->kind) {
+        case AST_COMPILATION_UNIT:
+            for (size_t i = 0; i < node->compilation_unit.imports.count; i++)
+                test_parser(node->compilation_unit.imports.items[i], depth + 1);
+            for (size_t i = 0; i < node->compilation_unit.decls.count; i++)
+                test_parser(node->compilation_unit.decls.items[i], depth + 1);
+            break;
+        case AST_FN_DECL:
+            for (size_t i = 0; i < node->fn_decl.params.count; i++)
+                test_parser(node->fn_decl.params.items[i], depth + 1);
+            if (node->fn_decl.body) test_parser(node->fn_decl.body, depth + 1);
+            break;
+        case AST_STRUCT_DECL:
+        case AST_UNION_DECL:
+            for (size_t i = 0; i < node->struct_decl.fields.count; i++)
+                test_parser(node->struct_decl.fields.items[i], depth + 1);
+            break;
+        case AST_ENUM_DECL:
+            for (size_t i = 0; i < node->enum_decl.variants.count; i++)
+                test_parser(node->enum_decl.variants.items[i], depth + 1);
+            break;
+        case AST_TRAITS_DECL:
+            for (size_t i = 0; i < node->traits_decl.methods.count; i++)
+                test_parser(node->traits_decl.methods.items[i], depth + 1);
+            break;
+        case AST_EXTEND_DECL:
+            for (size_t i = 0; i < node->extend_decl.methods.count; i++)
+                test_parser(node->extend_decl.methods.items[i], depth + 1);
+            break;
+        case AST_BLOCK:
+            for (size_t i = 0; i < node->block.stmts.count; i++)
+                test_parser(node->block.stmts.items[i], depth + 1);
+            if (node->block.trailing_expr) test_parser(node->block.trailing_expr, depth + 1);
+            break;
+        case AST_IF_STMT:
+            test_parser(node->if_stmt.then_block, depth + 1);
+            if (node->if_stmt.else_block) test_parser(node->if_stmt.else_block, depth + 1);
+            break;
+        case AST_WHILE_STMT:
+            test_parser(node->while_stmt.body, depth + 1);
+            break;
+        case AST_FOR_STMT:
+            test_parser(node->for_stmt.body, depth + 1);
+            break;
+        case AST_MATCH_STMT:
+            for (size_t i = 0; i < node->match_stmt.arms.count; i++)
+                test_parser(node->match_stmt.arms.items[i], depth + 1);
+            break;
+        case AST_CALL_EXPR:
+            for (size_t i = 0; i < node->call_expr.args.count; i++)
+                test_parser(node->call_expr.args.items[i], depth + 1);
+            break;
+        case AST_METHOD_CALL_EXPR:
+            for (size_t i = 0; i < node->method_call_expr.args.count; i++)
+                test_parser(node->method_call_expr.args.items[i], depth + 1);
+            break;
+        case AST_ARRAY_LITERAL:
+            for (size_t i = 0; i < node->array_literal.elements.count; i++)
+                test_parser(node->array_literal.elements.items[i], depth + 1);
+            break;
+        case AST_STRUCT_LITERAL:
+            for (size_t i = 0; i < node->struct_literal.fields.count; i++)
+                test_parser(node->struct_literal.fields.items[i], depth + 1);
+            break;
+        default: break;
+    }
+}
+
 int main(int argc, char** argv) {
     const char* input_file = NULL;
-    
-     /*
-     * ------------------------------------------------------------------
-     * Command-line arguments
-     * ------------------------------------------------------------------
-     */
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--dump-tokens") == 0) {
             g_dump_tokens = true;
-
         } else if (strcmp(argv[i], "--dump-ast") == 0) {
             g_dump_ast = true;
-
         } else if (strcmp(argv[i], "--expand") == 0) {
             g_expand = true;
-
-        } else if (strcmp(argv[i], "-h") == 0 ||
-                   strcmp(argv[i], "--help") == 0) {
-
+        } else if (strcmp(argv[i], "--test-lexer") == 0) {
+            g_test_lexer = true;
+        } else if (strcmp(argv[i], "--test-parser") == 0) {
+            g_test_parser = true;
+        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
-
-        } else if (strcmp(argv[i], "-v") == 0 ||
-                   strcmp(argv[i], "--version") == 0) {
-
+        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
             printf("Raya compiler %s\n", RAYA_VERSION);
             return 0;
-
         } else if (argv[i][0] == '-') {
-            fprintf(stderr,
-                    "error: unknown option '%s'\n",
-                    argv[i]);
-
+            fprintf(stderr, "error: unknown option '%s'\n", argv[i]);
             print_usage(argv[0]);
             return 1;
-
         } else {
             if (input_file) {
-                fprintf(stderr,
-                        "error: multiple input files not supported\n");
-
+                fprintf(stderr, "error: multiple input files not supported\n");
                 return 1;
             }
-
             input_file = argv[i];
         }
     }
-
-    /*
-     * ------------------------------------------------------------------
-     * Input validation
-     * ------------------------------------------------------------------
-     */
 
     if (!input_file) {
         fprintf(stderr, "error: no input file\n");
@@ -162,33 +227,13 @@ int main(int argc, char** argv) {
     }
 
     size_t input_len = strlen(input_file);
-
-    if (input_len < 5 ||
-        strcmp(input_file + input_len - 5, ".raya") != 0) {
-
-        fprintf(stderr,
-                "warning: input file does not have .raya extension\n");
+    if (input_len < 5 || strcmp(input_file + input_len - 5, ".raya") != 0) {
+        fprintf(stderr, "warning: input file does not have .raya extension\n");
     }
-
-    /*
-     * ------------------------------------------------------------------
-     * Read source
-     * ------------------------------------------------------------------
-     */
 
     size_t source_len = 0;
-
     char* source = read_file(input_file, &source_len);
-
-    if (!source) {
-        return 1;
-    }
-
-    /*
-     * ------------------------------------------------------------------
-     * Compiler state
-     * ------------------------------------------------------------------
-     */
+    if (!source) return 1;
 
     Arena arena;
     arena_init(&arena, 1024 * 1024);
@@ -197,103 +242,70 @@ int main(int argc, char** argv) {
     diag_init(&diag);
 
     Lexer lexer;
-    lexer_init(
-        &lexer,
-        source,
-        source_len,
-        input_file,
-        &diag
-    );
+    lexer_init(&lexer, source, source_len, input_file, &diag);
 
-    /*
-     * ------------------------------------------------------------------
-     * Phase 0: lexing
-     * ------------------------------------------------------------------
-     */
-
-    printf(
-        "Raya compiler %s — compiling '%s' (%lu bytes)\n\n",
-        RAYA_VERSION,
-        input_file,
-        (unsigned long)source_len
-    );
+    if (g_test_lexer) {
+        test_lexer(&lexer);
+        arena_free_all(&arena);
+        free(source);
+        return diag.has_errors ? 1 : 0;
+    }
 
     if (g_dump_tokens) {
+        printf("Raya compiler %s — compiling '%s' (%lu bytes)\n\n",
+               RAYA_VERSION, input_file, (unsigned long)source_len);
         dump_tokens(&lexer);
-
-        /*
-         * Reset lexer so diagnostics / later phases can
-         * consume the source from the beginning.
-         */
-        lexer_init(
-            &lexer,
-            source,
-            source_len,
-            input_file,
-            &diag
-        );
+        lexer_init(&lexer, source, source_len, input_file, &diag);
     }
 
-    size_t tok_cap = 256;
-    size_t tok_count = 0;
-    Token* tokens = arena_alloc(&arena, tok_cap * sizeof(Token));
-
-    for (;;) {
-        Token tok = lexer_next(&lexer);
-        if (tok_count >= tok_cap) {
-            size_t old_cap = tok_cap;
-            tok_cap *= 2;
-            Token* new_toks = arena_alloc(&arena, tok_cap * sizeof(Token));
-            memcpy(new_toks, tokens, old_cap * sizeof(Token));
-            tokens = new_toks;
+    /* Tokenize everything into an array for the parser */
+    Token* tokens = NULL;
+    size_t token_count = 0;
+    size_t token_cap = 0;
+    Token t;
+    while ((t = lexer_next(&lexer)).kind != TOK_EOF) {
+        if (token_count >= token_cap) {
+            token_cap = token_cap ? token_cap * 2 : 256;
+            tokens = (Token*)realloc(tokens, token_cap * sizeof(Token));
         }
-        tokens[tok_count++] = tok;
-        if (tok.kind == TOK_EOF) break;
+        tokens[token_count++] = t;
     }
-    
-    /* Run Parser Pass */
+    /* Append EOF token */
+    if (token_count >= token_cap) {
+        token_cap = token_cap ? token_cap * 2 : 256;
+        tokens = (Token*)realloc(tokens, token_cap * sizeof(Token));
+    }
+    t.kind = TOK_EOF;
+    t.text = sv_from_cstr("");
+    t.loc = loc_make(input_file, 1, 1, source_len);
+    tokens[token_count++] = t;
+
     Parser parser;
-    parser_init(&parser, tokens, tok_count, &arena);
+    parser_init(&parser, tokens, token_count, &arena);
     AstNode* ast = parser_parse(&parser);
 
-    if (g_dump_ast && ast) {
-        printf("=== AST DUMP ===\n");
+    if (g_test_parser) {
+        test_parser(ast, 0);
+    } else if (g_dump_ast) {
+        printf("Raya compiler %s — AST dump for '%s'\n\n",
+               RAYA_VERSION, input_file);
         ast_print(ast, 0);
-        printf("\n");
     }
 
-
-    /*
-     * ------------------------------------------------------------------
-     * Diagnostics
-     * ------------------------------------------------------------------
-     */
-
-    if (diag.error_count > 0 ||
-        diag.warning_count > 0) {
-
-        diag_print_all(
-            &diag,
-            source,
-            source_len
-        );
+    if (diag.error_count > 0 || diag.warning_count > 0) {
+        diag_print_all(&diag, source, source_len);
     }
-
     diag_print_summary(&diag);
-    int result = (diag.has_errors || parser.had_error ) ? 1 : 0;
-    /*
-     * ------------------------------------------------------------------
-     * Cleanup
-     * ------------------------------------------------------------------
-     */
-    
+
+    int result = diag.has_errors || parser.had_error ? 1 : 0;
+
     for (size_t i = 0; i < diag.count; i++) {
         free((void*)diag.items[i].message.data);
     }
-
     free(diag.items);
+    free(tokens);
     arena_free_all(&arena);
     free(source);
 
-    return result; 
+    return result;
 }

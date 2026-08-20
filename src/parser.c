@@ -844,7 +844,6 @@ static void parser_parse_generic_params(Parser *p, AstNodeList *out_list)
 
 static AstNode *parser_parse_fn_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     bool is_comptime = parser_match(p, TOK_COMPTIME);
     bool is_unsafe = parser_match(p, TOK_UNSAFE);
     parser_expect(p, TOK_FN, "expected 'fn'");
@@ -884,7 +883,6 @@ static AstNode *parser_parse_fn_decl(Parser *p, bool is_pub, AttributeList attrs
 
 static AstNode *parser_parse_struct_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_STRUCT, "expected 'struct'");
 
     const Token *name = parser_current(p);
@@ -926,7 +924,6 @@ static AstNode *parser_parse_struct_decl(Parser *p, bool is_pub, AttributeList a
 
 static AstNode *parser_parse_union_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_UNION, "expected 'union'");
 
     const Token *name = parser_current(p);
@@ -968,7 +965,6 @@ static AstNode *parser_parse_union_decl(Parser *p, bool is_pub, AttributeList at
 
 static AstNode *parser_parse_enum_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_ENUM, "expected 'enum'");
 
     const Token *name = parser_current(p);
@@ -1005,7 +1001,6 @@ static AstNode *parser_parse_enum_decl(Parser *p, bool is_pub, AttributeList att
 
 static AstNode *parser_parse_traits_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_TRAITS, "expected 'traits'");
 
     const Token *name = parser_current(p);
@@ -1051,7 +1046,6 @@ static AstNode *parser_parse_traits_decl(Parser *p, bool is_pub, AttributeList a
 static AstNode *parser_parse_extend_decl(Parser *p, bool is_pub, AttributeList attrs)
 {
     (void)is_pub;
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_EXTEND, "expected 'extend'");
 
     const Token *target = parser_current(p);
@@ -1118,7 +1112,6 @@ static AstNode *parser_parse_extend_decl(Parser *p, bool is_pub, AttributeList a
 
 static AstNode *parser_parse_type_alias(Parser *p, bool is_pub, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_TYPE, "expected 'type'");
 
     const Token *name = parser_current(p);
@@ -1137,7 +1130,6 @@ static AstNode *parser_parse_type_alias(Parser *p, bool is_pub, AttributeList at
 
 static AstNode *parser_parse_test_decl(Parser *p, AttributeList attrs)
 {
-    SourceLocation loc = parser_current(p)->loc;
     parser_expect(p, TOK_TEST, "expected 'test'");
 
     const Token *name = parser_current(p);

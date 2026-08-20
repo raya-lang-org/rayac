@@ -1,8 +1,0 @@
-var x: ?u32 = 42;
-const y: f64 = 3.14;
-
-if (x == 42) {
-    y = 0.0;
-} else {
-    return;
-}
