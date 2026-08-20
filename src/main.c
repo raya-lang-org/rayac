@@ -1,4 +1,3 @@
-
 #include "common.h"
 #include "arena.h"
 #include "string_view.h"
@@ -8,12 +7,13 @@
 #include "parser.h"
 #include "sema.h"
 
-
 bool g_dump_tokens = false;
 bool g_dump_ast = false;
 bool g_expand = false;
 bool g_test_lexer = false;
 bool g_test_parser = false;
+bool g_check = false;
+bool g_test_sema = false;
 
 static void print_usage(const char* prog) {
     fprintf(stderr, "Raya compiler %s\n", RAYA_VERSION);
@@ -24,6 +24,8 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --expand         Print expanded source after comptime\n");
     fprintf(stderr, "  --test-lexer     Output token kinds only (for tests)\n");
     fprintf(stderr, "  --test-parser    Output AST kinds only (for tests)\n");
+    fprintf(stderr, "  --check          Run semantic analysis\n");
+    fprintf(stderr, "  --test-sema      Output sema errors only (for tests)\n");
     fprintf(stderr, "  -h, --help       Show this help\n");
     fprintf(stderr, "  -v, --version    Show version\n");
 }
@@ -203,6 +205,10 @@ int main(int argc, char** argv) {
             g_test_lexer = true;
         } else if (strcmp(argv[i], "--test-parser") == 0) {
             g_test_parser = true;
+        } else if (strcmp(argv[i], "--check") == 0) {
+            g_check = true;
+        } else if (strcmp(argv[i], "--test-sema") == 0) {
+            g_test_sema = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -285,6 +291,35 @@ int main(int argc, char** argv) {
     Parser parser;
     parser_init(&parser, tokens, token_count, &arena);
     AstNode* ast = parser_parse(&parser);
+
+    /* ===== SEMANTIC ANALYSIS ===== */
+    if (g_test_sema) {
+        Sema *sema = sema_new(&arena, &diag);
+        sema_run(sema, ast);
+        if (diag.error_count == 0) {
+            printf("ok\n");
+        } else {
+            for (size_t i = 0; i < diag.count; i++) {
+                if (diag.items[i].kind == DIAG_ERROR) {
+                    printf("%.*s\n", (int)diag.items[i].message.len, diag.items[i].message.data);
+                }
+            }
+        }
+        for (size_t i = 0; i < diag.count; i++) {
+            free((void*)diag.items[i].message.data);
+        }
+        free(diag.items);
+        free(tokens);
+        arena_free_all(&arena);
+        free(source);
+        return diag.error_count > 0 ? 1 : 0;
+    }
+
+    if (g_check) {
+        Sema *sema = sema_new(&arena, &diag);
+        sema_run(sema, ast);
+    }
+    /* ===== END SEMANTIC ANALYSIS ===== */
 
     if (g_test_parser) {
         test_parser(ast, 0);

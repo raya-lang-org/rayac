@@ -85,18 +85,34 @@ test-parser: all
 		rm -f "$$actual"; \
 	done; \
 	echo "Parser: $$passed passed, $$failed failed"
-
-test-sema: $(BIN)
-	@for f in tests/sema/*.raya; do \
-		./$(BIN) --test-sema "$$f" > /tmp/actual.txt 2>&1; \
-		if ! cmp -s /tmp/actual.txt "$${f%.raya}.expected"; then \
-			echo "FAIL: $$f"; \
-		else \
-			echo "PASS: $$f"; \
+	
+test-sema: all
+	@echo "Running sema tests..."
+	@set -e; \
+	passed=0; failed=0; \
+	for f in $(TESTDIR)/sema/*.raya; do \
+		name=$$(basename "$$f" .raya); \
+		expected="$(TESTDIR)/sema/$$name.expected"; \
+		if [ ! -f "$$expected" ]; then \
+			echo " SKIP $$f (no .expected)"; \
+			continue; \
 		fi; \
-	done
+		actual="$(TESTDIR)/sema/$$name.actual"; \
+		$(TARGET) --test-sema "$$f" > "$$actual" 2>/dev/null; \
+		if cmp -s "$$expected" "$$actual"; then \
+			echo " PASS $$f"; \
+			passed=$$((passed + 1)); \
+		else \
+			echo " FAIL $$f"; \
+			failed=$$((failed + 1)); \
+		fi; \
+		rm -f "$$actual"; \
+	done; \
+	echo "Sema: $$passed passed, $$failed failed"
 
 test: test-lexer test-parser test-sema
+
+
 
 
 debug: CFLAGS := -Wall -Wextra -std=c11 -g -fsanitize=address -Isrc

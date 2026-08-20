@@ -1,5 +1,5 @@
-#ifndef TYPE_H
-#define TYPE_H
+#ifndef RAYA_TYPE_H
+#define RAYA_TYPE_H
 
 #include "common.h"
 #include "string_view.h"
@@ -9,24 +9,11 @@ typedef struct SType SType;
 typedef struct TypeField TypeField;
 
 typedef enum {
-    ST_VOID,
-    ST_BOOL,
-    ST_INT,
-    ST_FLOAT,
-    ST_NORETURN,
-    ST_POINTER,
-    ST_REFERENCE,
-    ST_SLICE,
-    ST_ARRAY,
-    ST_OPTIONAL,
-    ST_ERROR_UNION,
-    ST_FUNCTION,
-    ST_STRUCT,
-    ST_UNION,
-    ST_ENUM,
-    ST_TRAIT,
-    ST_GENERIC_PARAM,
-    ST_OPAQUE,
+    ST_VOID, ST_BOOL, ST_INT, ST_FLOAT, ST_NORETURN,
+    ST_POINTER, ST_REFERENCE, ST_SLICE, ST_ARRAY,
+    ST_OPTIONAL, ST_ERROR_UNION, ST_FUNCTION,
+    ST_STRUCT, ST_UNION, ST_ENUM, ST_TRAIT,
+    ST_GENERIC_PARAM, ST_OPAQUE,
 } STypeKind;
 
 struct TypeField {
@@ -38,7 +25,7 @@ struct TypeField {
 struct SType {
     STypeKind kind;
     uint32_t hash;
-    SType *next_hash;   /* chaining for canonical type table */
+    SType *next_hash;
     union {
         struct { bool is_signed; uint8_t bits; } integer;
         struct { uint8_t bits; } floating;
@@ -101,12 +88,11 @@ SType *st_optional(TypeTable *tt, SType *base);
 SType *st_error_union(TypeTable *tt, SType *base);
 SType *st_function(TypeTable *tt, SType **params, size_t pc, SType *ret, bool variadic);
 
-SType *st_from_ast(TypeTable *tt, struct AstNode *type_expr);
+SType *st_from_ast(TypeTable *tt, struct TypeExpr *type_expr);
 
 bool st_eq(SType *a, SType *b);
 bool st_is_integer(SType *t);
 bool st_is_numeric(SType *t);
-bool st_is_const_ptr(SType *t);
 bool st_can_coerce(SType *from, SType *to);
 
 const char *st_name(SType *t);
