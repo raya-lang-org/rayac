@@ -15,11 +15,25 @@ static bool stderr_is_tty(void) {
     return isatty(fileno(stderr));
 }
 
+void diag_free(DiagnosticEngine* d);
+
 static const char* color_red(void)    { return stderr_is_tty() ? "\033[1;31m" : ""; }
 static const char* color_yellow(void) { return stderr_is_tty() ? "\033[1;33m" : ""; }
 static const char* color_blue(void)   { return stderr_is_tty() ? "\033[1;34m" : ""; }
 static const char* color_reset(void)  { return stderr_is_tty() ? "\033[0m"  : ""; }
 static const char* color_bold(void)   { return stderr_is_tty() ? "\033[1m"  : ""; }
+
+void diag_free(DiagnosticEngine* d) {
+    for (size_t i = 0; i < d->count; i++) {
+        free((void*)d->items[i].message.data);
+    }
+
+    free(d->items);
+
+    d->items = NULL;
+    d->count = 0;
+    d->capacity = 0;
+}
 
 void diag_init(DiagnosticEngine* d) {
     d->items = NULL;

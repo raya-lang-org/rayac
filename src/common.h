@@ -8,8 +8,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdalign.h>
 
-#define RAYA_VERSION "0.7.0"
+#define RAYA_VERSION "0.7.4"
 
 extern bool g_dump_tokens;
 extern bool g_dump_ast;

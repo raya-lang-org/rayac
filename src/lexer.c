@@ -31,6 +31,12 @@ static struct { const char* word; TokenKind kind; } keywords[] = {
     {"unsafe",    TOK_UNSAFE},
     {"var",       TOK_VAR},
     {"while",     TOK_WHILE},
+    {"enum",TOK_ENUM}, 
+    {"as", TOK_AS},
+    {"with", TOK_WITH}, 
+    {"undefined", TOK_UNDEFINED}, 
+    {"self", TOK_SELF},
+    {"Self",  TOK_CAP_SELF},
 };
 #define KEYWORD_COUNT (sizeof(keywords) / sizeof(keywords[0]))
 

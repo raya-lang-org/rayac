@@ -2,6 +2,24 @@
 
 #define ARENA_DEFAULT_CAPACITY (1024 * 1024)
 
+static bool is_power_of_two(size_t x) {
+    return x != 0 && (x & (x - 1)) == 0;
+}
+
+static size_t align_up(size_t value, size_t align) {
+    assert(is_power_of_two(align));
+
+    size_t mask = align - 1;
+
+    if (value > SIZE_MAX - mask) {
+        fprintf(stderr, "arena: size overflow\n");
+        abort();
+    }
+
+    return (value + mask) & ~mask;
+}
+
+
 void arena_init(Arena* a, size_t initial_capacity) {
     if (initial_capacity == 0) initial_capacity = ARENA_DEFAULT_CAPACITY;
     a->base = (char*)malloc(initial_capacity);
@@ -24,6 +42,7 @@ static Arena* arena_new_chunk(size_t min_size) {
     }
     chunk->base = (char*)malloc(cap);
     if (!chunk->base) {
+        free(chunk);
         fprintf(stderr, "arena_new_chunk: out of memory\n");
         abort();
     }
@@ -38,6 +57,11 @@ void* arena_alloc(Arena* a, size_t size) {
 }
 
 void* arena_alloc_aligned(Arena* a, size_t size, size_t align) {
+    if (align == 0 || !is_power_of_two(align)) {
+        fprintf(stderr, "arena_alloc_aligned: invalid alignment\n");
+        abort();
+    }
+
     Arena* chunk = a;
     while (chunk) {
         size_t aligned = (chunk->used + align - 1) & ~(align - 1);
@@ -48,10 +72,17 @@ void* arena_alloc_aligned(Arena* a, size_t size, size_t align) {
         if (!chunk->next) break;
         chunk = chunk->next;
     }
+    
+    if (size > SIZE_MAX - align) {
+        fprintf(stderr, "arena_alloc_aligned: size overflow\n");
+        abort();
+    }
+
     Arena* new_chunk = arena_new_chunk(size + align);
     chunk->next = new_chunk;
-    new_chunk->used = size;
-    return new_chunk->base;
+    size_t aligned = align_up((size_t)0, align);
+    new_chunk->used = aligned + size;
+    return new_chunk->base + aligned;
 }
 
 void* arena_realloc(Arena* a, void* old_ptr, size_t old_size, size_t new_size) {
@@ -63,6 +94,9 @@ void* arena_realloc(Arena* a, void* old_ptr, size_t old_size, size_t new_size) {
 }
 
 char* arena_strdup(Arena* a, const char* s) {
+    if (!s) {
+        return NULL;
+    }
     size_t len = strlen(s);
     char* copy = (char*)arena_alloc(a, len + 1);
     memcpy(copy, s, len + 1);
@@ -70,6 +104,9 @@ char* arena_strdup(Arena* a, const char* s) {
 }
 
 char* arena_strndup(Arena* a, const char* s, size_t n) {
+    if (!s) {
+        return NULL;
+    }
     char* copy = (char*)arena_alloc(a, n + 1);
     memcpy(copy, s, n);
     copy[n] = '\0';
