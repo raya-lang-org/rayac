@@ -6,6 +6,8 @@
 #include "diag.h"
 #include "lexer.h"
 #include "parser.h"
+#include "sema.h"
+
 
 bool g_dump_tokens = false;
 bool g_dump_ast = false;
