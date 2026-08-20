@@ -29,7 +29,9 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
-test: all
+test: test-lexer test-parser
+
+test-lexer: all
 	@echo "Running lexer tests..."
 	@set -e; \
 	for f in tests/lexer/*.raya; do \
@@ -46,6 +48,31 @@ test: all
 			/^----/ { next } \
 			/^Total:/ { exit } \
 			found && $$1 != "" { print $$1 }' \
+			> "$$expected.actual"; \
+		if diff -u "$$expected" "$$expected.actual"; then \
+			echo "    PASS"; \
+		else \
+			echo "    FAIL"; \
+			rm -f "$$expected.actual"; \
+			exit 1; \
+		fi; \
+		rm -f "$$expected.actual"; \
+	done
+
+test-parser: all
+	@echo "Running parser tests..."
+	@set -e; \
+	for f in tests/parser/*.raya; do \
+		if [ ! -f "$$f" ]; then continue; fi; \
+		name=$$(basename "$$f" .raya); \
+		expected="tests/parser/$$name.expected"; \
+		echo "  $$f"; \
+		if [ ! -f "$$expected" ]; then \
+			echo "    FAIL: missing $$expected"; \
+			exit 1; \
+		fi; \
+		$(TARGET) --dump-ast "$$f" 2>/dev/null | \
+			sed -n '/=== AST DUMP ===/,$${/=== AST DUMP ===/d; p}' \
 			> "$$expected.actual"; \
 		if diff -u "$$expected" "$$expected.actual"; then \
 			echo "    PASS"; \

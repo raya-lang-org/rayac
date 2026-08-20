@@ -4,6 +4,7 @@
 #include "source_loc.h"
 #include "diag.h"
 #include "lexer.h"
+#include "parser.h"
 
 bool g_dump_tokens = false;
 bool g_dump_ast = false;
@@ -233,6 +234,35 @@ int main(int argc, char** argv) {
         );
     }
 
+    size_t tok_cap = 256;
+    size_t tok_count = 0;
+    Token* tokens = arena_alloc(&arena, tok_cap * sizeof(Token));
+
+    for (;;) {
+        Token tok = lexer_next(&lexer);
+        if (tok_count >= tok_cap) {
+            size_t old_cap = tok_cap;
+            tok_cap *= 2;
+            Token* new_toks = arena_alloc(&arena, tok_cap * sizeof(Token));
+            memcpy(new_toks, tokens, old_cap * sizeof(Token));
+            tokens = new_toks;
+        }
+        tokens[tok_count++] = tok;
+        if (tok.kind == TOK_EOF) break;
+    }
+    
+    /* Run Parser Pass */
+    Parser parser;
+    parser_init(&parser, tokens, tok_count, &arena);
+    AstNode* ast = parser_parse(&parser);
+
+    if (g_dump_ast && ast) {
+        printf("=== AST DUMP ===\n");
+        ast_print(ast, 0);
+        printf("\n");
+    }
+
+
     /*
      * ------------------------------------------------------------------
      * Diagnostics
@@ -250,7 +280,7 @@ int main(int argc, char** argv) {
     }
 
     diag_print_summary(&diag);
-    int result = diag.has_errors ? 1 : 0;
+    int result = (diag.has_errors || parser.had_error ) ? 1 : 0;
     /*
      * ------------------------------------------------------------------
      * Cleanup
