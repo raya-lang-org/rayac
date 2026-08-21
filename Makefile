@@ -1,21 +1,18 @@
 # Compiler and flags
-CC := C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe
-CFLAGS := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
-LDFLAGS :=
+CC       := C:\ProgramData\mingw64\mingw64\bin\gcc.exe
+CFLAGS   := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
+LDFLAGS  :=
 
-SRCDIR := src
-OBJDIR := obj
-SRCS := src/main.c src/lexer.c src/parser.c src/ast.c src/arena.c src/diag.c \
-        src/type.c src/symbol.c src/sema.c
+SRCDIR   := src
+OBJDIR   := obj
+BINDIR   := bin
+TESTDIR  := tests
 
-BINDIR := bin
-TESTDIR := tests
+SOURCES  := $(wildcard $(SRCDIR)/*.c)
+OBJECTS  := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
+TARGET   := $(BINDIR)/raya
 
-SOURCES := $(wildcard $(SRCDIR)/*.c)
-OBJECTS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
-TARGET := $(BINDIR)/raya
-
-.PHONY: all clean test test-lexer test-parser dirs
+.PHONY: all clean test test-lexer test-parser test-sema dirs debug
 
 all: dirs $(TARGET)
 
@@ -23,7 +20,7 @@ dirs:
 	@mkdir -p $(OBJDIR) $(BINDIR)
 
 $(TARGET): $(OBJECTS)
-	@echo " LINK $@"
+	@echo "  LINK    $@"
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
@@ -33,60 +30,72 @@ clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
 # ============================================================================
-# Fast lexer tests — no awk, just raw token kinds
-# ==========================================================================
+# Lexer tests
+# ============================================================================
+
 test-lexer: all
 	@echo "Running lexer tests..."
-	@set -e; \
-	passed=0; failed=0; \
+	@passed=0; failed=0; \
 	for f in $(TESTDIR)/lexer/*.raya; do \
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/lexer/$$name.expected"; \
+		actual="$(TESTDIR)/lexer/$$name.actual"; \
 		if [ ! -f "$$expected" ]; then \
-			echo " SKIP $$f (no .expected)"; \
+			echo "  SKIP  $$f (no .expected)"; \
 			continue; \
 		fi; \
-		actual="$(TESTDIR)/lexer/$$name.actual"; \
-		$(TARGET) --test-lexer "$$f" > "$$actual" 2>/dev/null; \
-		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
-		if cmp -s "$$expected" "$$actual"; then \
-			echo " PASS $$f"; \
+		$(TARGET) --test-lexer "$$f" > "$$actual" 2>/dev/null || true; \
+		if tr -d '\r' < "$$expected" | cmp -s - <(tr -d '\r' < "$$actual"); then \
+			echo "  PASS  $$f"; \
 			passed=$$((passed + 1)); \
 		else \
-			echo " FAIL $$f"; \
+			echo "  FAIL  $$f"; \
+			echo "  diff expected actual:"; \
+			diff -u \
+				<(tr -d '\r' < "$$expected") \
+				<(tr -d '\r' < "$$actual") || true; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual" "$$actual.tmp"; \
+		rm -f "$$actual"; \
 	done; \
-	echo "Lexer: $$passed passed, $$failed failed"
+	echo "Lexer: $$passed passed, $$failed failed"; \
+	test $$failed -eq 0
 
 # ============================================================================
-# Fast parser tests — AST kind tree output
-# ==========================================================================
+# Parser tests
+# ============================================================================
+
 test-parser: all
 	@echo "Running parser tests..."
-	@set -e; \
-	passed=0; failed=0; \
+	@passed=0; failed=0; \
 	for f in $(TESTDIR)/parser/*.raya; do \
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/parser/$$name.expected"; \
+		actual="$(TESTDIR)/parser/$$name.actual"; \
 		if [ ! -f "$$expected" ]; then \
-			echo " SKIP $$f (no .expected)"; \
+			echo "  SKIP  $$f (no .expected)"; \
 			continue; \
 		fi; \
-		actual="$(TESTDIR)/parser/$$name.actual"; \
-		$(TARGET) --test-parser "$$f" > "$$actual" 2>/dev/null; \
-		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
-		if cmp -s "$$expected" "$$actual"; then \
-			echo " PASS $$f"; \
+		$(TARGET) --test-parser "$$f" > "$$actual" 2>/dev/null || true; \
+		if tr -d '\r' < "$$expected" | cmp -s - <(tr -d '\r' < "$$actual"); then \
+			echo "  PASS  $$f"; \
 			passed=$$((passed + 1)); \
 		else \
-			echo " FAIL $$f"; \
+			echo "  FAIL  $$f"; \
+			echo "  diff expected actual:"; \
+			diff -u \
+				<(tr -d '\r' < "$$expected") \
+				<(tr -d '\r' < "$$actual") || true; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual" "$$actual.tmp"; \
+		rm -f "$$actual"; \
 	done; \
-	echo "Parser: $$passed passed, $$failed failed"
+	echo "Parser: $$passed passed, $$failed failed"; \
+	test $$failed -eq 0
+
+# ============================================================================
+# Semantic analysis tests
+# ============================================================================
 
 test-sema: all
 	@echo "Running sema tests..."
@@ -94,28 +103,37 @@ test-sema: all
 	for f in $(TESTDIR)/sema/*.raya; do \
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/sema/$$name.expected"; \
+		actual="$(TESTDIR)/sema/$$name.actual"; \
 		if [ ! -f "$$expected" ]; then \
-			echo " SKIP $$f (no .expected)"; \
+			echo "  SKIP  $$f (no .expected)"; \
 			continue; \
 		fi; \
-		actual="$(TESTDIR)/sema/$$name.actual"; \
-		$(TARGET) --test-sema "$$f" > "$$actual" 2>/dev/null; \
-		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
-		if diff -q "$$expected" "$$actual" > /dev/null 2>&1; then \
-			echo " PASS $$f"; \
+		$(TARGET) --test-sema "$$f" > "$$actual" 2>/dev/null || true; \
+		if tr -d '\r' < "$$expected" | cmp -s - <(tr -d '\r' < "$$actual"); then \
+			echo "  PASS  $$f"; \
 			passed=$$((passed + 1)); \
 		else \
-			echo " FAIL $$f"; \
+			echo "  FAIL  $$f"; \
 			echo "  diff expected actual:"; \
-			diff "$$expected" "$$actual" | sed 's/^/  /' || true; \
+			diff -u \
+				<(tr -d '\r' < "$$expected") \
+				<(tr -d '\r' < "$$actual") || true; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual" "$$actual.tmp"; \
+		rm -f "$$actual"; \
 	done; \
 	echo "Sema: $$passed passed, $$failed failed"; \
-	if [ $$failed -gt 0 ]; then exit 1; fi
+	test $$failed -eq 0
+
+# ============================================================================
+# All tests
+# ============================================================================
 
 test: test-lexer test-parser test-sema
+
+# ============================================================================
+# Debug build
+# ============================================================================
 
 debug: CFLAGS := -Wall -Wextra -std=c11 -g -fsanitize=address -Isrc
 debug: LDFLAGS := -fsanitize=address
