@@ -1,3 +1,4 @@
+
 #ifndef RAYA_SEMA_H
 #define RAYA_SEMA_H
 
@@ -8,8 +9,8 @@
 #include "source_loc.h"
 #include "diag.h"
 
-
 typedef struct AstNode AstNode;
+typedef struct MethodEntry MethodEntry;
 
 typedef struct Sema Sema;
 
@@ -22,6 +23,10 @@ struct Sema {
     struct AstNode *current_fn;
     DiagnosticEngine *diag;
     size_t error_count;
+    bool in_unsafe;
+    bool current_fn_has_return;
+    bool in_collect_decls;
+    MethodEntry *method_table;
 };
 
 Sema *sema_new(Arena *arena, DiagnosticEngine *diag);
