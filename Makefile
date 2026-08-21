@@ -1,19 +1,19 @@
 # Compiler and flags
-CC       := C:\ProgramData\mingw64\mingw64\bin\gcc.exe
-CFLAGS   := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
-LDFLAGS  :=
+CC := C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe
+CFLAGS := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
+LDFLAGS :=
 
-SRCDIR   := src
-OBJDIR   := obj
-SRCS     := src/main.c src/lexer.c src/parser.c src/ast.c src/arena.c src/diag.c \
-            src/type.c src/symbol.c src/sema.c
+SRCDIR := src
+OBJDIR := obj
+SRCS := src/main.c src/lexer.c src/parser.c src/ast.c src/arena.c src/diag.c \
+        src/type.c src/symbol.c src/sema.c
 
-BINDIR   := bin
-TESTDIR  := tests
+BINDIR := bin
+TESTDIR := tests
 
-SOURCES  := $(wildcard $(SRCDIR)/*.c)
-OBJECTS  := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
-TARGET   := $(BINDIR)/raya
+SOURCES := $(wildcard $(SRCDIR)/*.c)
+OBJECTS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
+TARGET := $(BINDIR)/raya
 
 .PHONY: all clean test test-lexer test-parser dirs
 
@@ -23,7 +23,7 @@ dirs:
 	@mkdir -p $(OBJDIR) $(BINDIR)
 
 $(TARGET): $(OBJECTS)
-	@echo "  LINK    $@"
+	@echo " LINK $@"
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
@@ -43,19 +43,20 @@ test-lexer: all
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/lexer/$$name.expected"; \
 		if [ ! -f "$$expected" ]; then \
-			echo "  SKIP  $$f (no .expected)"; \
+			echo " SKIP $$f (no .expected)"; \
 			continue; \
 		fi; \
 		actual="$(TESTDIR)/lexer/$$name.actual"; \
 		$(TARGET) --test-lexer "$$f" > "$$actual" 2>/dev/null; \
+		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
 		if cmp -s "$$expected" "$$actual"; then \
-			echo "  PASS  $$f"; \
+			echo " PASS $$f"; \
 			passed=$$((passed + 1)); \
 		else \
-			echo "  FAIL  $$f"; \
+			echo " FAIL $$f"; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual"; \
+		rm -f "$$actual" "$$actual.tmp"; \
 	done; \
 	echo "Lexer: $$passed passed, $$failed failed"
 
@@ -70,22 +71,22 @@ test-parser: all
 		name=$$(basename "$$f" .raya); \
 		expected="$(TESTDIR)/parser/$$name.expected"; \
 		if [ ! -f "$$expected" ]; then \
-			echo "  SKIP  $$f (no .expected)"; \
+			echo " SKIP $$f (no .expected)"; \
 			continue; \
 		fi; \
 		actual="$(TESTDIR)/parser/$$name.actual"; \
 		$(TARGET) --test-parser "$$f" > "$$actual" 2>/dev/null; \
+		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
 		if cmp -s "$$expected" "$$actual"; then \
-			echo "  PASS  $$f"; \
+			echo " PASS $$f"; \
 			passed=$$((passed + 1)); \
 		else \
-			echo "  FAIL  $$f"; \
+			echo " FAIL $$f"; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual"; \
+		rm -f "$$actual" "$$actual.tmp"; \
 	done; \
 	echo "Parser: $$passed passed, $$failed failed"
-	
 
 test-sema: all
 	@echo "Running sema tests..."
@@ -99,16 +100,17 @@ test-sema: all
 		fi; \
 		actual="$(TESTDIR)/sema/$$name.actual"; \
 		$(TARGET) --test-sema "$$f" > "$$actual" 2>/dev/null; \
-		if cmp -s "$$expected" "$$actual"; then \
+		sed -i 's/\r$$//' "$$actual" 2>/dev/null || sed 's/\r$$//' "$$actual" > "$$actual.tmp" && mv "$$actual.tmp" "$$actual"; \
+		if diff -q "$$expected" "$$actual" > /dev/null 2>&1; then \
 			echo " PASS $$f"; \
 			passed=$$((passed + 1)); \
 		else \
 			echo " FAIL $$f"; \
 			echo "  diff expected actual:"; \
-			diff "$$expected" "$$actual" | sed 's/^/    /' || true; \
+			diff "$$expected" "$$actual" | sed 's/^/  /' || true; \
 			failed=$$((failed + 1)); \
 		fi; \
-		rm -f "$$actual"; \
+		rm -f "$$actual" "$$actual.tmp"; \
 	done; \
 	echo "Sema: $$passed passed, $$failed failed"; \
 	if [ $$failed -gt 0 ]; then exit 1; fi
