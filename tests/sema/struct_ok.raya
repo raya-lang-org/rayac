@@ -1,5 +1,52 @@
+
 struct Point { x: f32, y: f32 }
 
 fn get_x(p: Point) -> f32 {
     return p.x;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

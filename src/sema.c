@@ -212,11 +212,18 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt) {
             return st_void(s->types);
         }
         case AST_RETURN_STMT: {
+            size_t errs_before = s->error_count;
             SType *ret = st_void(s->types);
-            if (stmt->return_stmt.value) ret = sema_check_expr(s, stmt->return_stmt.value);
-            SType *expected = s->current_fn && s->current_fn->fn_decl.ret_type ? sema_resolve_type(s, s->current_fn->fn_decl.ret_type) : st_void(s->types);
-            if (!st_can_coerce(ret, expected))
-                sema_report(s, stmt->loc, "return type mismatch: expected '%s', found '%s'", st_name(expected), st_name(ret));
+            if (stmt->return_stmt.value) {
+                ret = sema_check_expr(s, stmt->return_stmt.value);
+            }
+            SType *expected = s->current_fn && s->current_fn->fn_decl.ret_type
+                ? sema_resolve_type(s, s->current_fn->fn_decl.ret_type)
+                : st_void(s->types);
+            if (s->error_count == errs_before && !st_can_coerce(ret, expected)) {
+                sema_report(s, stmt->loc, "return type mismatch: expected '%s', found '%s'",
+                    st_name(expected), st_name(ret));
+            }
             return st_void(s->types);
         }
         case AST_EXPR_STMT:

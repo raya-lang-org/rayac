@@ -1,1 +1,1 @@
-field 'x' expects 'f32', got '[]u8'
+field 'x' expects 'f32', got '[]const u8'
