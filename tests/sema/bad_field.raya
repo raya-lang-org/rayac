@@ -1,5 +1,5 @@
-struct Point { x: f32, y: f32 }
+struct Point { x: f64, y: f64, }
 
-fn get_z(p: Point) -> f32 {
+fn get_z(p: Point) -> f64 {
     return p.z;
 }
