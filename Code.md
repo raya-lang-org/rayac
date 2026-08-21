@@ -1,482 +1,723 @@
-# Code Snippet in Raya Programming Language 0.7.6 , Phase 0, 2, and 3 Complete
+Raya Language Reference
 
-module banking;
+    Version: 0.7.5
+    Status: Formal Specification — Path A
+    This document defines the complete syntax, type system, and semantics of the Raya language.
 
-// ============================================================================
-// Configuration
-// ============================================================================
+Table of Contents
 
-pub const CURRENCY_USD: i32 = 0;
-pub const CURRENCY_EUR: i32 = 1;
-pub const CURRENCY_GBP: i32 = 2;
+    Lexical Specification
+    Syntax Specification (EBNF)
+    Type System & Pointer Taxonomy
+    Semantics
+    Attributes
+    Memory Model
+    ABI Layout
+    Comptime Execution Model
 
-pub const MAX_OVERDRAFT_CENTS: i64 = 500_00;
+1. Lexical Specification
+1.1 Source Encoding
 
-// ============================================================================
-// Errors
-// ============================================================================
+    UTF-8 only. BOM (0xEF 0xBB 0xBF) is stripped by the lexer.
+    Line endings: \n (Unix) or \r\n (Windows). \r alone is an error.
 
-pub enum BankError {
-    InsufficientFunds,
-    InvalidAmount,
-    AccountFrozen,
-    CurrencyMismatch,
-    AccountNotFound,
+1.2 Comments
+raya
+
+// Line comment: extends to end of line
+
+/*
+ * Block comment
+ * Nestable to depth 16
+ */
+
+/* outer /* inner */ still outer */
+
+1.3 Whitespace
+Space (0x20), Tab (0x09), Newline (0x0A), Carriage Return (0x0D), Form Feed (0x0C), Vertical Tab (0x0B).
+1.4 Keywords (30 — Frozen)
+Table
+#	Keyword	Category	#	Keyword	Category
+1	module	Module	16	try	Error handling
+2	import	Module	17	break	Control flow
+3	fn	Function	18	continue	Control flow
+4	pub	Visibility	19	match	Control flow
+5	const	Declaration	20	struct	Type
+6	var	Declaration	21	union	Type
+7	comptime	Compile-time	22	enum	Type
+8	defer	Cleanup	23	traits	Type system
+9	errdefer	Error cleanup	24	extend	Type system
+10	test	Testing	25	type	Type system
+11	return	Control flow	26	unsafe	Safety
+12	if	Control flow	27	noreturn	Type / control
+13	else	Control flow	28	as	Conversion
+14	while	Loop	29	with	Syntax / context
+15	for	Loop	30	undefined	Value
+1.5 Built-in Primitive Types (Reserved, NOT Keywords)
+Signed integers: i8, i16, i32, i64, i128, isize
+Unsigned integers: u8, u16, u32, u64, u128, usize
+Floating point: f32, f64
+Other: bool, void
+
+    Cannot be shadowed by user declarations.
+    Valid only in type-expression context.
+
+1.6 Reserved Literals (NOT Keywords)
+
+    true | false — boolean literals
+    null — null literal
+    undefined — uninitialized memory (IS a keyword, see #30)
+
+1.7 Identifiers
+ebnf
+
+identifier ::= [a-zA-Z_][a-zA-Z0-9_]*
+
+    Must not match any keyword, primitive type name, or reserved literal.
+    Identifiers beginning with __ (double underscore) are reserved for compiler-generated symbols.
+
+1.8 Contextual Identifiers
+
+    self — method receiver. Lexes as IDENTIFIER; gains special meaning inside struct/union/enum/trait methods.
+    Self — current enclosing type. Lexes as IDENTIFIER; gains special meaning as a type alias to the enclosing type.
+
+1.9 Literals
+Integer:
+ebnf
+
+decimal ::= [0-9]+
+hex     ::= 0x[0-9a-fA-F]+
+octal   ::= 0o[0-7]+
+binary  ::= 0b[01]+
+
+No suffixes. Type inferred from context or explicit cast.
+Float:
+ebnf
+
+float ::= [0-9]+ "." [0-9]+ ([eE] [+-]? [0-9]+)?
+      | [0-9]+ [eE] [+-]? [0-9]+
+
+Default type is f64.
+String:
+ebnf
+
+string ::= " ([^"] | \ [nt"\0])* "
+
+Type is []const u8. No multi-line strings.
+Character:
+ebnf
+
+char ::= ' ([^'] | \ [nt'\0]) '
+
+Type is u8. No distinct char type.
+1.10 Operators and Punctuation
+plain
+
++  -  *  /  %
+== != <  >  <= >=
+=  += -= *= /= %= &= |= ^= <<= >>=
+&  |  ^  <<  >>  &&  ||  !  ~
+.  .. -> => :: #
+( ) [ ] { }
+, ; : ? &
+
+1.11 Attributes
+raya
+
+#[packed]
+#[align(16)]
+#[extern("C")]
+#[section(".text.boot")]
+
+2. Syntax Specification (EBNF)
+2.1 Compilation Unit
+ebnf
+
+compilation_unit ::= module_decl? import_stmt* top_level_decl*
+
+module_decl ::= "module" identifier ";"
+
+2.2 Import Statement
+ebnf
+
+import_stmt ::= "import" module_path ( "as" identifier )? ";"
+module_path ::= identifier ( "." identifier )*
+
+2.3 Top-Level Declarations
+ebnf
+
+top_level_decl ::= pub_decl | private_decl
+
+pub_decl    ::= "pub" visibility_decl
+private_decl ::= visibility_decl
+
+visibility_decl ::= fn_decl
+                  | struct_decl
+                  | enum_decl
+                  | union_decl
+                  | trait_decl
+                  | extend_decl
+                  | type_alias
+                  | const_decl
+                  | var_decl
+                  | test_decl
+
+2.4 Function Declaration
+ebnf
+
+fn_decl ::= attribute* "comptime"? "fn" identifier generic_params?
+          "(" param_list? ")" return_type? block
+
+generic_params ::= "(" generic_param ( "," generic_param )* ")"
+generic_param  ::= identifier ":" "type" ( "with" trait_list )?
+trait_list     ::= identifier ( "," identifier )*
+
+param_list ::= param ( "," param )*
+param      ::= identifier ":" type_expr ( "=" expr )?
+
+return_type ::= "->" type_expr
+
+2.5 Block
+ebnf
+
+block ::= "{" stmt* trailing_expr? "}"
+
+trailing_expr ::= expr
+
+    If present, the trailing expression (no semicolon) is the value of the block.
+    If absent, block value is void.
+
+2.6 Statements
+ebnf
+
+stmt ::= decl_stmt
+       | expr_stmt
+       | assignment_stmt
+       | return_stmt
+       | if_stmt
+       | while_stmt
+       | for_stmt
+       | defer_stmt
+       | errdefer_stmt
+       | break_stmt
+       | continue_stmt
+       | match_stmt
+       | block
+
+decl_stmt ::= "const" identifier ":" type_expr? "=" expr ";"
+            | "var" identifier ":" type_expr? "=" expr ";"
+
+expr_stmt      ::= expr ";"
+assignment_stmt ::= expr assign_op expr ";"
+
+assign_op ::= "=" | "+=" | "-=" | "*=" | "/=" | "%="
+            | "&=" | "|=" | "^=" | "<<=" | ">>="
+
+return_stmt ::= "return" expr? ";"
+
+if_stmt   ::= "if" expr block ( "else" ( block | if_stmt ) )?
+while_stmt ::= "while" expr block
+
+for_stmt ::= "for" identifier ":" type_expr "in" expr block
+
+defer_stmt  ::= "defer" expr ";"
+errdefer_stmt ::= "errdefer" block
+
+break_stmt    ::= "break" ";"
+continue_stmt ::= "continue" ";"
+
+match_stmt ::= "match" expr "{" match_arm* "}"
+match_arm  ::= pattern "=>" expr ","
+
+2.7 Expressions (Precedence, Highest to Lowest)
+ebnf
+
+expr ::= primary_expr
+       | expr "." identifier                    /* field access */
+       | expr "." identifier "(" arg_list? ")"  /* method call */
+       | expr "(" arg_list? ")"                 /* function call */
+       | expr "[" expr "]"                      /* index */
+       | expr "[" expr ".." expr "]"           /* slice */
+       | "&" expr                               /* address-of */
+       | "&" "const" expr                       /* immutable address */
+       | "*" expr                               /* dereference (unsafe) */
+       | "-" expr                               /* unary negation */
+       | "!" expr                               /* logical not */
+       | "~" expr                               /* bitwise not */
+       | expr "as" type_expr                    /* cast */
+       | expr "*" expr                          /* multiplication */
+       | expr "/" expr                          /* division */
+       | expr "%" expr                          /* modulo */
+       | expr "+" expr                          /* addition */
+       | expr "-" expr                          /* subtraction */
+       | expr "<<" expr                         /* shift left */
+       | expr ">>" expr                         /* shift right */
+       | expr "&" expr                          /* bitwise and */
+       | expr "^" expr                          /* bitwise xor */
+       | expr "|" expr                          /* bitwise or */
+       | expr "==" expr                         /* equality */
+       | expr "!=" expr                         /* inequality */
+       | expr "<" expr                          /* less than */
+       | expr ">" expr                          /* greater than */
+       | expr "<=" expr                         /* less equal */
+       | expr ">=" expr                         /* greater equal */
+       | expr "&&" expr                         /* logical and */
+       | expr "||" expr                         /* logical or */
+       | "try" expr                             /* error propagation */
+       | expr "else" "|" identifier "|" block   /* error capture */
+       | "unsafe" block                         /* unsafe context */
+
+primary_expr ::= literal
+               | identifier
+               | "null"
+               | "true"
+               | "false"
+               | "undefined"
+               | array_literal
+               | struct_literal
+               | "(" expr ")"
+
+arg_list ::= expr ( "," expr )*
+
+2.8 Type Expressions
+ebnf
+
+type_expr ::= primary_type
+            | type_expr "!"                     /* error union */
+            | "?" type_expr                     /* optional */
+            | "&" type_expr                     /* mutable reference */
+            | "&" "const" type_expr             /* immutable reference */
+            | "[]" type_expr                    /* mutable slice */
+            | "[]" "const" type_expr            /* immutable slice */
+            | "*" type_expr                     /* mutable raw pointer */
+            | "*" "const" type_expr             /* immutable raw pointer */
+            | "[" expr "]" type_expr            /* fixed array */
+
+primary_type ::= identifier
+               | identifier "(" type_arg_list ")"  /* generic instantiation */
+               | "fn" "(" type_list? ")" return_type?  /* function type */
+               | "type"                              /* meta-type */
+               | primitive_type
+
+primitive_type ::= "void"
+                 | "bool"
+                 | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                 | "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                 | "f32" | "f64"
+
+type_arg_list ::= type_expr ( "," type_expr )*
+type_list     ::= type_expr ( "," type_expr )*
+
+2.9 Array and Struct Literals
+ebnf
+
+array_literal ::= "[]" type_expr "{" arg_list? "}"
+                | "[" expr "]" type_expr "{" arg_list? "}"
+                | "[" expr "]" type_expr "{" expr "," "}"   /* repeat-fill */
+
+struct_literal ::= identifier "{" field_init_list? "}"
+field_init_list ::= field_init ( "," field_init )*
+field_init      ::= identifier ":" expr
+
+2.10 Struct Declaration
+ebnf
+
+struct_decl ::= attribute* "struct" identifier generic_params?
+              "{" field_decl* "}"
+
+field_decl ::= attribute* "pub"? identifier ":" type_expr ( "=" expr )? ","
+
+2.11 Enum Declaration
+ebnf
+
+enum_decl ::= attribute* "enum" identifier "{" variant_decl* "}"
+
+variant_decl ::= identifier ( "(" type_expr ")" )? ( "=" expr )? ","
+
+2.12 Union Declaration
+ebnf
+
+union_decl ::= attribute* "union" identifier generic_params?
+             "{" field_decl* "}"
+
+2.13 Trait Declaration
+ebnf
+
+trait_decl ::= "traits" identifier "{" trait_method* "}"
+
+trait_method ::= "pub"? "fn" identifier "(" param_list? ")"
+               return_type? ";"
+
+2.14 Extend Declaration (Trait Implementation)
+ebnf
+
+extend_decl ::= "extend" identifier "with" trait_list block
+
+2.15 Type Alias
+ebnf
+
+type_alias ::= "type" identifier "=" type_expr ";"
+
+2.16 Test Declaration
+ebnf
+
+test_decl ::= "test" string_literal block
+
+3. Type System & Pointer Taxonomy
+3.1 References (&T, &const T, ?&T)
+
+    Non-null, address-aligned memory locations.
+    Auto-dereferencing on field access and method call.
+    NO pointer arithmetic permitted.
+    Rebindable: var r: &i32 = &x; r = &y; is legal.
+    Aliasing: Multiple &T to the same address is permitted. The programmer is responsible for synchronization. This is not a compiler error.
+    Struct fields: A struct MAY contain &T or []T fields. The compiler tracks nothing about the referent's lifetime. Dangling references are programmer bugs.
+
+Table
+Type	Null?	Size	Auto-deref?	Core Use
+&T	No	sizeof(usize)	Yes	Safe, mutable reference. Function params, struct fields.
+&const T	No	sizeof(usize)	Yes	Read-only view. Multiple &const T to same address allowed.
+?&T	Yes	sizeof(usize)	Yes	Null-pointer optimized: 0x0 is null. No extra tag.
+3.2 Slices ([]T, []const T)
+
+    Fat pointer: struct { ptr: *T, len: usize } in target native endianness, ptr-first.
+    Bounds checking on index: slice[i] checks 0 <= i < len.
+        Panic/abort in Debug and ReleaseSafe.
+        Undefined behavior in ReleaseFast.
+    Sub-slicing: slice[start..end] produces []T with len = end - start, ptr = slice.ptr + start. Bounds-checked at construction.
+    Empty slice is valid: ptr may be undefined/0x0, len == 0.
+
+3.3 Raw Pointers (*T, *const T, ?*T)
+
+    C-style unrestricted access.
+    Arithmetic: ptr + n advances by n * sizeof(T) bytes (scaled, C-style).
+    Byte-level: For unscaled byte arithmetic, cast through *u8: ptr as *u8 + 5.
+    Dereference: Requires unsafe block or unsafe fn. *ptr is the deref syntax.
+    Coercion: &T implicitly coerces to *T in unsafe contexts. *T to &T requires explicit unsafe assertion of validity.
+
+3.4 Fixed Arrays ([N]T)
+
+    Stack-allocated contiguous sequence.
+    Implicitly coerces to []T: buf → buf[0..N]
+    Implicitly coerces to []const T.
+
+3.5 Opaque Pointers (*void, *const void) — FFI Only
+
+    Valid only in #[extern("C")] contexts and unsafe blocks.
+    Coerce to/from any *T or *const T in unsafe contexts.
+    Cannot be dereferenced (void has no size).
+
+3.6 Coercion Matrix
+Table
+From → To	Mechanism
+[N]T → []T	Implicit
+[N]T → []const T	Implicit
+&T → &const T	Implicit (freezes mutability)
+&T → *T	Implicit inside unsafe only
+*T → &T	Explicit unsafe assertion required
+[]T → *T	Explicit: slice.ptr
+*void → *T	Explicit unsafe ptr_cast only
+T → !T	Implicit on return (wraps success tag)
+!T → T	Explicit: try, or else |err| unwrap
+4. Semantics
+4.1 Control Flow — No Outer Parentheses
+raya
+
+while true { }      // OK
+while (true) { }    // SYNTAX ERROR
+
+4.2 No Implicit Self
+Methods must declare self explicitly:
+raya
+
+pub fn length(self: &const Vec3) -> f32 { ... }
+
+4.3 Trait Object-Safety Rules
+A trait is object-safe (can form &Trait) iff ALL methods:
+
+    Have no comptime parameters (except implicit self)
+    Have no generic parameters
+    Do not return T by value
+    Have receiver self: &T or self: &const T
+
+4.4 Error Union Layout
+!T is represented as:
+c
+
+struct {
+    tag: u32,           /* padding to alignof(T) */
+    payload: T
 }
 
-// ============================================================================
-// Money
-// ============================================================================
+    Tag 0x00000000 = Success.
+    Non-zero = (module_id: u16 << 16) | error_code: u16.
 
-pub struct Money {
-    pub amount_cents: i64,
-    pub currency: i32,
+4.5 Casting Rules
+x as T is allowed for:
+
+    Integer ↔ Integer (checked in debug, wrapping in release)
+    Integer ↔ Float
+    Pointer ↔ Pointer (in unsafe only)
+    Pointer ↔ Integer (in unsafe only)
+    Enum ↔ Integer
+
+4.6 Defer / Errdefer Scope
+
+    defer executes its expression when the enclosing BLOCK exits (not function).
+    errdefer executes its block when the enclosing FUNCTION exits via error.
+    Multiple defers in the same block execute in LIFO order.
+    errdefer blocks execute in LIFO order before the error is propagated.
+
+4.7 Unsafe Contexts
+The following require unsafe { ... } or unsafe fn:
+
+    Dereferencing raw pointers (*ptr)
+    Pointer arithmetic
+    Type punning between pointer types
+    Inline assembly
+    Calling extern C functions without wrappers
+    Coercing *void to typed pointers
+
+4.8 Generic Constraints
+raya
+
+fn sort(T: type with Comparable, Serializable)(arr: []T) -> void { ... }
+
+The compiler checks structural implementation before monomorphization.
+4.9 Undefined Semantics
+
+    undefined represents uninitialized memory. It is not a specific bit pattern.
+    Reading undefined memory in safe code is a safety-checked compile error if the compiler can prove the read occurs; otherwise it is immediate undefined behavior at runtime in debug builds.
+    undefined is valid only in initialization contexts:
+
+raya
+
+var x: u32 = undefined;     // OK
+var y: u32 = x + 1;         // ERROR: x is undefined
+
+    undefined may not be passed to comptime functions or used in compile-time constant evaluation.
+
+4.10 Self and Self
+
+    self is a contextual identifier referring to the receiver instance inside struct/union/enum/trait methods.
+    Self is a contextual identifier referring to the enclosing type within a struct/union/enum/trait definition.
+    Neither is a keyword. Outside method/type context they are ordinary identifiers.
+
+4.11 Block Trailing Expressions
+raya
+
+const x = if cond {
+    42                          // trailing expression: block value is 42
+} else {
+    0
+};
+
+4.12 Try in Expression Position
+raya
+
+const x = try might_fail();                     // OK
+const y = (try a()) + (try b());               // OK
+
+4.13 Generic Instantiation Syntax
+raya
+
+const v = Vec3(f32){ x: 1.0, y: 2.0, z: 3.0 };  // No angle brackets
+
+4.14 Array Literal Repeat-Fill
+raya
+
+const zeros = [100]u32{ 0, };   // fills all 100 elements with 0
+const exact = [3]u32{ 1, 2, 3 }; // requires exactly 3 elements
+
+4.15 Bitfield Packing
+Fields of type u1, u2, u3, etc. in a #[packed] struct are automatically bit-packed by the compiler. Byte-aligned fields maintain normal alignment even inside #[packed].
+raya
+
+#[packed]
+struct StatusReg {
+    ready: u1,
+    error: u1,
+    reserved: u6,    // packed into first byte
+    status: u16,     // starts at byte offset 1, aligned
 }
 
-pub traits Formattable {
-    pub fn format(self: Self) -> []const u8;
+4.16 Pointer Dereference Syntax
+
+    *ptr is the only dereference syntax. There is NO ptr.* sugar.
+    Auto-dereference applies only to &T and &const T, not *T.
+    To access a field through a raw pointer: (*ptr).field inside unsafe.
+
+5. Attributes
+Attributes decorate the declaration that immediately follows them.
+raya
+
+#[packed]
+struct Header {
+    flags: u8,
+    len: u16,
 }
 
-extend Money with Formattable {
-    pub fn format(self: Money) -> []const u8 {
-        return "Money";
-    }
+#[align(64)]
+struct CacheLine {
+    data: [64]u8,
 }
 
-// ============================================================================
-// Transaction
-// ============================================================================
-
-pub enum TxType {
-    Deposit,
-    Withdrawal,
-    Transfer,
-    Fee,
-}
-
-pub struct Transaction {
-    pub tx_type: TxType,
-    pub amount: Money,
-    pub counterparty: i32,
-}
-
-// ============================================================================
-// Bank Account
-// ============================================================================
-
-pub struct BankAccount {
-    pub id: i32,
-    pub owner: []const u8,
-    pub balance: Money,
-    pub frozen: bool,
-    pub tx_count: i32,
-}
-
-pub type TxResult = !Money;
-
-extend BankAccount {
-    pub fn new(id: i32, owner: []const u8, currency: i32) -> BankAccount {
-        return BankAccount{
-            id: id,
-            owner: owner,
-            balance: Money{ amount_cents: 0, currency: currency },
-            frozen: false,
-            tx_count: 0,
-        };
-    }
-
-    pub fn deposit(self: BankAccount, amount: Money) -> TxResult {
-        if self.frozen {
-            return BankError.AccountFrozen;
-        }
-        if amount.amount_cents <= 0 {
-            return BankError.InvalidAmount;
-        }
-        if self.balance.currency != amount.currency {
-            return BankError.CurrencyMismatch;
-        }
-
-        defer {
-            self.tx_count += 1;
-        }
-
-        self.balance.amount_cents += amount.amount_cents;
-        return self.balance;
-    }
-
-    pub fn withdraw(self: BankAccount, amount: Money) -> TxResult {
-        errdefer {
-            self.tx_count += 1;
-        }
-
-        if self.frozen {
-            return BankError.AccountFrozen;
-        }
-        if amount.amount_cents <= 0 {
-            return BankError.InvalidAmount;
-        }
-        if self.balance.currency != amount.currency {
-            return BankError.CurrencyMismatch;
-        }
-
-        var available = self.balance.amount_cents + MAX_OVERDRAFT_CENTS;
-        if amount.amount_cents > available {
-            return BankError.InsufficientFunds;
-        }
-
-        self.balance.amount_cents -= amount.amount_cents;
-        self.tx_count += 1;
-        return self.balance;
-    }
-
-    pub fn transfer(self: BankAccount, recipient: BankAccount, amount: Money) -> TxResult {
-        try self.withdraw(amount);
-        try recipient.deposit(amount);
-        return self.balance;
-    }
-
-    pub fn freeze(self: BankAccount) -> void {
-        self.frozen = true;
-    }
-
-    pub fn unfreeze(self: BankAccount) -> void {
-        self.frozen = false;
-    }
-
-    pub fn is_overdrawn(self: BankAccount) -> bool {
-        return self.balance.amount_cents < 0;
-    }
-
-    pub fn audit(self: BankAccount) -> void {
-        unsafe {
-            var ptr = &self.balance;
-            ptr = ptr;
-        }
-    }
-}
-
-// ============================================================================
-// Ledger (Repository)
-// ============================================================================
-
-pub struct Ledger {
-    pub next_id: i32,
-    pub total_accounts: i32,
-}
-
-extend Ledger {
-    pub fn new() -> Ledger {
-        return Ledger{
-            next_id: 1000,
-            total_accounts: 0,
-        };
-    }
-
-    pub fn open_account(self: Ledger, owner: []const u8, currency: i32) -> BankAccount {
-        var id = self.next_id;
-        self.next_id += 1;
-        self.total_accounts += 1;
-        return BankAccount.new(id, owner, currency);
-    }
-}
-
-// ============================================================================
-// Main
-// ============================================================================
-
-fn main() -> void {
-    var ledger = Ledger.new();
-
-    var alice = ledger.open_account("Alice", CURRENCY_USD);
-    var bob = ledger.open_account("Bob", CURRENCY_USD);
-
-    // Initial deposits
-    var opening = Money{ amount_cents: 1000_00, currency: CURRENCY_USD };
-    try alice.deposit(opening);
-
-    var bob_funding = Money{ amount_cents: 500_00, currency: CURRENCY_USD };
-    try bob.deposit(bob_funding);
-
-    // Transfer from Alice to Bob
-    var payment = Money{ amount_cents: 250_00, currency: CURRENCY_USD };
-    try alice.transfer(bob, payment);
-
-    // Attempt large withdrawal (should fail)
-    var big_request = Money{ amount_cents: 9999_00, currency: CURRENCY_USD };
-    var result = alice.withdraw(big_request);
-
-    match result {
-        .InsufficientFunds => print("Declined: insufficient funds"),
-        .InvalidAmount => print("Declined: invalid amount"),
-        .AccountFrozen => print("Declined: account frozen"),
-        .CurrencyMismatch => print("Declined: currency mismatch"),
-        _ => print("Transaction completed"),
-    }
-
-    // Check overdraft status
-    if alice.is_overdrawn() {
-        print("Alice account: OVERDRAWN");
-    } else {
-        print("Alice account: in credit");
-    }
-
-    // Freeze Alice's account and attempt another deposit
-    alice.freeze();
-    var small = Money{ amount_cents: 10_00, currency: CURRENCY_USD };
-    var frozen_result = alice.deposit(small);
-
-    match frozen_result {
-        .AccountFrozen => print("Blocked: account is frozen"),
-        _ => print("Deposit accepted"),
-    }
-
-    // Cast demonstration
-    var rounded = (alice.balance.amount_cents / 100) as i32;
-    var dummy = rounded;
-
-    // Undefined demonstration (placeholder for future allocation)
-    var temp_tx: Transaction = undefined;
-    temp_tx.tx_type = TxType.Fee;
-}
-
-// ============================================================================
-// Stubs
-// ============================================================================
-
-fn print(msg: []const u8) -> void {
-    // Platform I/O stub
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "deposit increases balance" {
-    var acc = BankAccount.new(1, "Test", CURRENCY_USD);
-    var m = Money{ amount_cents: 100_00, currency: CURRENCY_USD };
-    var r = acc.deposit(m);
-
-    match r {
-        _ => {
-            if acc.balance.amount_cents != 100_00 {
-                print("FAIL");
-            }
-        }
-    }
-}
-
-test "withdraw respects overdraft limit" {
-    var acc = BankAccount.new(2, "Test", CURRENCY_USD);
-    var m = Money{ amount_cents: 100_00, currency: CURRENCY_USD };
-    acc.deposit(m);
-
-    var over = Money{ amount_cents: 600_00, currency: CURRENCY_USD };
-    var r = acc.withdraw(over);
-
-    match r {
-        .InsufficientFunds => print("OK"),
-        _ => print("FAIL"),
-    }
-}
-
-
-| Feature                      | Where in the code                               |
-| ---------------------------- | ----------------------------------------------- |
-| `module`                     | Top-level                                       |
-| `pub` / `const`              | Configuration constants                         |
-| `enum`                       | `BankError`, `TxType`                           |
-| `struct`                     | `Money`, `Transaction`, `BankAccount`, `Ledger` |
-| `traits` / `extend ... with` | `Formattable` trait on `Money`                  |
-| `extend` (methods)           | `BankAccount` and `Ledger` method blocks        |
-| `self` / `Self`              | Method parameters and trait definition          |
-| `!T` (error union)           | `TxResult = !Money`                             |
-| `try`                        | `try self.withdraw(amount)`                     |
-| `defer`                      | Transaction counter increment                   |
-| `errdefer`                   | Failed withdrawal logging                       |
-| `match`                      | Error handling in `main` and tests              |
-| `if` / `else`                | Overdraft check, validation                     |
-| `unsafe`                     | Raw pointer audit stub                          |
-| `as`                         | Cast cents to `i32`                             |
-| `undefined`                  | Placeholder transaction                         |
-| `type` alias                 | `TxResult`                                      |
-| `test`                       | Two regression tests at bottom                  |
-| `var` / `return`             | Throughout                                      |
-| Feature                          | Where                                                                                                                              |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **`while` + `break`/`continue`** | `retry_withdraw()` — retries up to `MAX_RETRY_ATTEMPTS`, `continue` on transient errors, `break` on permanent ones                 |
-| **Generic `Repository(T)`**      | `Repository(T: type)` with `add`, `find_by_id`, `count`, `clear` — used as `Repository(BankAccount)` and `Repository(Transaction)` |
-| **`for ... in` loops**           | `process_batch()`, `audit_all()`, `total_deposits()`, test "for loop iterates accounts"                                            |
-| **`union` type**                 | `AccountState` — `.Active(Money)`, `.Frozen(Money)`, `.Closed`                                                                     |
-| **`comptime fn`**                | `calculate_rate()` — evaluated at compile time, result stored in `FIVE_YEAR_RATE`                                                  |
-| **`?T` optional**                | `find_account()` returns `?BankAccount`; `maybe_acc` check in `main()`                                                             |
-| **`match` on union variants**    | `get_balance()`, `is_active()`, `freeze()`, `unfreeze()`, `close()`                                                                |
-| **`as` cast**                    | `ptr as *AccountState`, `(cents / 100) as i32`                                                                                     |
-| **`&const` reference**           | `var ref = &const alice.owner`                                                                                                     |
-| **`#[...]` attributes**          | `#[test(timeout = 5000)]` on test blocks                                                                                           |
-| **`errdefer`**                   | Logs failed withdrawal attempts to `tx_history`                                                                                    |
-| **`unsafe` block**               | Raw pointer manipulation for debug internals                                                                                       |
-pub fn retry_withdraw(self: BankAccount, amount: Money) -> !Money {
-    var attempts: i32 = 0;
-    var last_error: ?BankError = null;
-
-    while attempts < MAX_RETRY_ATTEMPTS {
-        attempts += 1;
-        var result = self.withdraw(amount);
-
-        match result {
-            .InsufficientFunds => {
-                last_error = BankError.InsufficientFunds;
-                continue;   // retry if we haven't hit max
-            }
-            .NetworkTimeout => {
-                last_error = BankError.NetworkTimeout;
-                if attempts < MAX_RETRY_ATTEMPTS {
-                    continue;
-                }
-                break;      // give up
-            }
-            .AccountFrozen => {
-                last_error = BankError.AccountFrozen;
-                break;      // permanent failure
-            }
-            _ => {
-                return self.get_balance();  // success
-            }
-        }
-    }
-    return last_error;
-}
-
-
-
-match test_money {
-    .{ amount_cents: 0, currency: _ } => {
-        print("Zero balance");
-    }
-    .{ amount_cents: amt, currency: .USD } => {
-        if amt > 100_00 {
-            print("Large USD amount");
-        }
-    }
-    .{ amount_cents: _, currency: .EUR } => {
-        print("Euro amount");
-    }
-    .{ amount_cents: _, currency: c } => {
-        print("Other currency");
- 
-
-}
-
-match m3 {
-    .{ amount_cents: amt, currency: c } => {
-        if amt == 100_00 && c == Currency.GBP {
-            print("OK bind");
-        }
-    }
-}
-
-defer { print("Main cleanup: closing log file"); }
-defer { print("Main cleanup: flushing buffers"); }
-defer { print("Main cleanup: releasing handles"); }
-
-defer {
-    self.operations += 1;
-    log_operation("withdrawal_attempt");
-}
-
-defer {
-    if self.account.is_suspended() {
-        print("Account suspended during session");
-    }
-}
-
-defer {
-    var bal = self.account.get_balance();
-    if bal.amount_cents < 100_00 {
-        print("Low balance warning");
-    }
-}
-
-
-
-| Feature                               | Where                                                  |
-| ------------------------------------- | ------------------------------------------------------ |
-| **`AtmSession` struct**               | ATM wrapper with auth + defer chain                    |
-| **`authenticate()` + `login()`**      | PIN-based security                                     |
-| **`suspend()` with `SuspensionInfo`** | Union variant with payload                             |
-| **`find_suspicious()`**               | Returns `[]BankAccount` filtered by `.Suspended` state |
-| **`log_operation()` stub**            | Audit trail helper                                     |
-| **Test: struct patterns**             | `test "struct pattern matching on Money"`              |
-| **Test: defer chain**                 | `test "defer chain executes in LIFO order"`            |
-| **Test: ATM auth**                   
-
-extend BankAccount with Identifiable { ... }
-extend BankAccount with Auditable { ... }
-extend BankAccount with Printable { ... }
-extend BankAccount with Comparable { ... } | `test "ATM session authentication"`                    |
-
-
-
-pub fn audit_all_items<T: type with Auditable>(repo: Repository(T)) -> bool {
-    for item: T in repo.items {
-        if !item.audit() {
-            return false;
-        }
-    }
-    return true;
-}
-
-pub fn find_max<T: type with Comparable>(repo: Repository(T)) -> ?T {
-    var max_item: ?T = null;
-    for item: T in repo.items {
-        if max_item == null {
-            max_item = item;
-        } else if item.compare(max_item, item) > 0 {
-            max_item = item;
-        }
-    }
-    return max_item;
-}
-
-
-pub fn audit_all(self: Bank) -> bool {
-    return audit_all_items(self.accounts);
-}
-
-pub fn find_richest(self: Bank) -> ?BankAccount {
-    return find_max(self.accounts);
-}
-
-
-// Fee schedule in basis points (1/100 of 1%)
-pub comptime const FEE_BPS_TABLE: [4]i32 = [0, 100, 50, 0];
-// Currency symbols
-pub comptime const CURRENCY_SYMBOLS: [4][]const u8 = ["$", "€", "£", "¥"];
-// Decimal places per currency
-pub comptime const CURRENCY_DECIMALS: [4]i32 = [2, 2, 2, 0];
-
-
-pub comptime fn calculate_fee_bps(tx_type: TxType) -> i32 {
-    match tx_type {
-        .Deposit => return FEE_BPS_TABLE[0],
-        .Withdrawal => return FEE_BPS_TABLE[1],
-        .Transfer => return FEE_BPS_TABLE[2],
-        .Fee => return FEE_BPS_TABLE[3],
-    }
-}
-
-pub comptime fn apply_fee(amount: Money, tx_type: TxType) -> Money {
-    var bps = calculate_fee_bps(tx_type);
-    var fee_cents = (amount.amount_cents * bps) / 10000;
-    return Money{ amount_cents: fee_cents, currency: amount.currency };
-}
-
-var fee = comptime apply_fee(amount, TxType.Deposit);
-
-
-
-| Test                             | What it covers                                                  |
-| -------------------------------- | --------------------------------------------------------------- |
-| `comptime fee table lookup`      | `calculate_fee_bps()` returns correct values at compile time    |
-| `generic audit with trait bound` | `audit_all_items<T: type with Auditable>()`                     |
-| `Comparable trait find_max`      | `find_max<T: type with Comparable>()` finds the richest account |
+#[extern("C")]
+fn c_function(x: i32) -> i32;
+
+#[section(".text.boot")]
+fn _start() -> noreturn;
+
+Table
+Attribute	Target	Effect
+#[packed]	struct, union	Disable padding; bit-pack sub-byte fields
+#[align(N)]	struct, union, var	Force N-byte alignment
+#[extern("C")]	fn	C calling convention, no name mangling
+#[section("name")]	fn	Place in specific linker section
+#[noinline]	fn	Prevent inlining
+#[always_inline]	fn	Force inlining
+Multiple attributes may be stacked. Order is significant only for user-defined comptime attributes. Unknown attributes are a compile error unless permitted by a comptime plugin hook.
+6. Memory Model
+6.1 References
+
+    &T and &const T are non-null pointers.
+    They are rebindable — var r: &i32 = &x; r = &y; is legal.
+    The compiler tracks nothing about lifetimes. Dangling references are programmer bugs.
+
+6.2 Slices
+
+    []T is a fat pointer: { ptr: *T, len: usize }.
+    Bounds checking on every index operation.
+    Empty slices are valid: ptr may be undefined, len == 0.
+
+6.3 Raw Pointers
+
+    *T permits arbitrary pointer arithmetic (scaled by sizeof(T)).
+    Dereference requires unsafe.
+    &T coerces to *T implicitly in unsafe contexts.
+
+7. ABI Layout
+7.1 Fat-Pointer ABI (Frozen)
+A trait object &Trait is a fat pointer:
+plain
+
+┌─────────────────┬─────────────────┐
+│   data: *void   │  vtable: *void  │
+└─────────────────┴─────────────────┘
+
+    Native endianness.
+    data points to the concrete object.
+    vtable points to a static vtable for the Type + Trait combination.
+
+7.2 Error Union ABI
+plain
+
+┌────────┬────────┬─────────────────┐
+│ tag: u32 │ padding │   payload: T    │
+└────────┴────────┴─────────────────┘
+
+    Tag 0x00000000 = Success.
+    Non-zero = (module_id: u16 << 16) | error_code: u16.
+
+7.3 Slice ABI
+plain
+
+┌─────────────────┬─────────────────┐
+│   ptr: *T       │   len: usize    │
+└─────────────────┴─────────────────┘
+
+    Native endianness, ptr-first.
+
+8. Comptime Execution Model
+The comptime interpreter is a stack-based bytecode VM.
+8.1 Value Types in the Interpreter
+
+    Integer (i128) — for all integer math
+    Float (f128) — for all float math
+    Bool
+    String (heap-allocated, reference-counted)
+    Type (ComptimeType handle)
+    Descriptor (DeclDescriptor handle)
+    Expr / Stmt (AST node handles)
+    Pointer (opaque heap pointer for composite values)
+    Void
+
+8.2 Instruction Set (v1.0 Minimum)
+Table
+Opcode	Operands	Description
+NOP	—	No operation
+PUSH_INT	imm: i128	Push integer literal
+PUSH_FLT	imm: f128	Push float literal
+PUSH_STR	idx: u32	Push string from constant pool
+PUSH_TYP	idx: u32	Push type from type table
+PUSH_BOOL	imm: u8	Push true/false
+DUP	—	Duplicate top of stack
+POP	—	Pop and discard
+LD_LOCAL / ST_LOCAL	idx: u16	Local variable load/store
+LD_GLOBAL / ST_GLOBAL	idx: u16	Global load/store
+ADD_I / SUB_I / MUL_I / DIV_I / MOD_I	—	Integer arithmetic
+ADD_F / SUB_F / MUL_F / DIV_F	—	Float arithmetic
+AND / OR / XOR / SHL / SHR / NOT	—	Bitwise operations
+NEG_I / NEG_F	—	Negation
+EQ / NE / LT_I / GT_I / LE_I / GE_I	—	Integer comparisons
+LT_F / GT_F / LE_F / GE_F	—	Float comparisons
+JMP	offset: i32	Unconditional jump
+JZ	offset: i32	Jump if false/zero
+CALL	idx: u32	Call comptime function
+RET	—	Return from function
+CALL_BUILTIN	idx: u16	Compiler builtin (size_of, etc.)
+MAKE_ARRAY	len: u32	Pop N values, make array
+MAKE_STRUCT	idx: u32	Pop N values, make struct
+INDEX_ARRAY	—	Array index
+INDEX_STRUCT	field: u16	Struct field access
+FIELD_ACCESS	name: u32	Field access by name
+CONCAT_STR	—	String concatenation
+CAST_INT	target_bits: u8	Integer cast
+CAST_FLT	target_bits: u8	Float cast
+HALT	—	Terminate execution
+8.3 Execution Limits (Enforced)
+
+    Max instructions per evaluation: 10⁸
+    Max heap memory: 2GB
+    Max recursion depth: 1024
+    Max string length: 1MB
+    Max array length: 10⁶ elements
+
+8.4 Host Interface (Compiler Callbacks)
+raya
+
+builtin_size_of(T: ComptimeType) -> usize
+builtin_align_of(T: ComptimeType) -> usize
+builtin_offset_of(T: ComptimeType, field: []const u8) -> usize
+builtin_type_name(T: ComptimeType) -> []const u8
+builtin_compile_error(msg: []const u8) -> noreturn
+builtin_add_method(desc: DeclDescriptor, method: FnDecl) -> DeclDescriptor
+builtin_add_trait_impl(desc: DeclDescriptor, trait: []const u8, methods: []FnDecl) -> DeclDescriptor
+
+Appendix A: Complete Keyword Reference
+plain
+
+module    import    fn        pub       const     var
+comptime  defer     errdefer  test      return    if
+else      while     for       try       break     continue
+match     struct    union     enum      traits    extend
+type      unsafe    noreturn  as        with      undefined
+
+Appendix B: Complete Operator Precedence (High to Low)
+Table
+Precedence	Operators	Associativity
+1	() [] . method call	Left
+2	& &const * - ! ~ try	Right (prefix)
+3	as	Left
+4	* / %	Left
+5	+ -	Left
+6	<< >>	Left
+7	&	Left
+8	^	Left
+9	|	Left
+10	== != < > <= >=	Left
+11	&&	Left
+12	||	Left
+13	else |x| (error capture)	Right
+14	= += -= etc.	Right
+This document is the authoritative language specification for Raya Path A. For implementation status, see PROCESS.md.
