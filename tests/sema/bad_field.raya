@@ -1,0 +1,5 @@
+struct Point { x: f32, y: f32 }
+
+fn get_z(p: Point) -> f32 {
+    return p.z;
+}

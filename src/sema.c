@@ -37,6 +37,23 @@ void sema_run(Sema *s, AstNode *module) {
     sema_resolve_bodies(s, module);
 }
 
+static AstNodeList *sema_get_type_fields(Sema *s, SType *type, AstNode **out_decl) {
+    if (!type) return NULL;
+    StringView name = {0};
+    if (type->kind == ST_STRUCT || type->kind == ST_UNION) name = type->as.struct_.name;
+    else return NULL;
+    
+    Symbol *sym = scope_lookup(s->module_scope, name);
+    if (!sym || !sym->decl) return NULL;
+    if (sym->kind != SYM_STRUCT && sym->kind != SYM_UNION) return NULL;
+    
+    AstNode *decl = sym->decl;
+    *out_decl = decl;
+    if (decl->kind == AST_STRUCT_DECL) return &decl->struct_decl.fields;
+    if (decl->kind == AST_UNION_DECL) return &decl->union_decl.fields;
+    return NULL;
+}
+
 static SType *sema_make_fn_type(Sema *s, AstNode *fn) {
     size_t pc = fn->fn_decl.params.count;
     SType **params = arena_alloc(s->arena, pc * sizeof(SType*));
@@ -67,8 +84,8 @@ void sema_collect_decls(Sema *s, AstNode *module) {
                 is_pub = decl->struct_decl.is_pub;
                 break;
             case AST_UNION_DECL:
-                name = decl->struct_decl.name; kind = SYM_UNION; type = st_void(s->types);
-                is_pub = decl->struct_decl.is_pub;
+                name = decl->union_decl.name; kind = SYM_UNION; type = st_void(s->types);
+                is_pub = decl->union_decl.is_pub;
                 break;
             case AST_ENUM_DECL:
                 name = decl->enum_decl.name; kind = SYM_ENUM; type = st_void(s->types);
@@ -255,18 +272,32 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt) {
 SType *sema_check_expr(Sema *s, AstNode *expr) {
     if (!expr) return st_void(s->types);
     switch (expr->kind) {
-        case AST_INT_LITERAL: return st_int(s->types, true, 64);
-        case AST_FLOAT_LITERAL: return st_float(s->types, 64);
-        case AST_STRING_LITERAL: return st_slice(s->types, true, st_int(s->types, false, 8));
-        case AST_CHAR_LITERAL: return st_int(s->types, false, 8);
-        case AST_BOOL_LITERAL: return st_bool(s->types);
+        case AST_INT_LITERAL:
+            expr->sema_type = st_int(s->types, true, 64);
+            return expr->sema_type;
+        case AST_FLOAT_LITERAL:
+            expr->sema_type = st_float(s->types, 64);
+            return expr->sema_type;
+        case AST_STRING_LITERAL:
+            expr->sema_type = st_slice(s->types, true, st_int(s->types, false, 8));
+            return expr->sema_type;
+        case AST_CHAR_LITERAL:
+            expr->sema_type = st_int(s->types, false, 8);
+            return expr->sema_type;
+        case AST_BOOL_LITERAL:
+            expr->sema_type = st_bool(s->types);
+            return expr->sema_type;
         case AST_IDENTIFIER: {
             Symbol *sym = scope_lookup(s->current_scope, expr->identifier.name);
             if (!sym) {
                 sema_report(s, expr->loc, "use of undeclared identifier '%.*s'", SV_ARG(expr->identifier.name));
-                return st_void(s->types);
+                expr->sema_type = st_void(s->types);
+                expr->identifier.sym = NULL;
+                return expr->sema_type;
             }
-            return sym->type ? sym->type : st_void(s->types);
+            expr->identifier.sym = sym;
+            expr->sema_type = sym->type ? sym->type : st_void(s->types);
+            return expr->sema_type;
         }
         case AST_BINARY_EXPR: {
             SType *l = sema_check_expr(s, expr->binary_expr.left);
@@ -276,18 +307,27 @@ SType *sema_check_expr(Sema *s, AstNode *expr) {
                 case TOK_PLUS: case TOK_MINUS: case TOK_STAR: case TOK_SLASH: case TOK_PERCENT:
                     if (!st_is_numeric(l) || !st_is_numeric(r)) {
                         sema_report(s, expr->loc, "invalid operands to arithmetic expression");
-                        return st_void(s->types);
+                        expr->sema_type = st_void(s->types);
+                    } else {
+                        expr->sema_type = (l->kind == ST_FLOAT || r->kind == ST_FLOAT) ? st_float(s->types, 64) : l;
                     }
-                    return (l->kind == ST_FLOAT || r->kind == ST_FLOAT) ? st_float(s->types, 64) : l;
-                case TOK_EQ: case TOK_NE: case TOK_LT: case TOK_GT: case TOK_LE: case TOK_GE: return st_bool(s->types);
+                    break;
+                case TOK_EQ: case TOK_NE: case TOK_LT: case TOK_GT: case TOK_LE: case TOK_GE:
+                    expr->sema_type = st_bool(s->types);
+                    break;
                 case TOK_AND_AND: case TOK_OR_OR:
                     if (l->kind != ST_BOOL || r->kind != ST_BOOL) sema_report(s, expr->loc, "logical operators require boolean operands");
-                    return st_bool(s->types);
+                    expr->sema_type = st_bool(s->types);
+                    break;
                 case TOK_AMPERSAND: case TOK_PIPE: case TOK_CARET: case TOK_SHL: case TOK_SHR:
                     if (!st_is_integer(l) || !st_is_integer(r)) sema_report(s, expr->loc, "bitwise operators require integer operands");
-                    return l;
-                default: return l;
+                    expr->sema_type = l;
+                    break;
+                default:
+                    expr->sema_type = l;
+                    break;
             }
+            return expr->sema_type;
         }
         case AST_UNARY_EXPR: {
             SType *o = sema_check_expr(s, expr->unary_expr.operand);
@@ -295,65 +335,141 @@ SType *sema_check_expr(Sema *s, AstNode *expr) {
             switch (op) {
                 case TOK_MINUS: case TOK_TILDE:
                     if (!st_is_numeric(o)) sema_report(s, expr->loc, "invalid operand to unary operator");
-                    return o;
+                    expr->sema_type = o;
+                    break;
                 case TOK_BANG:
                     if (o->kind != ST_BOOL) sema_report(s, expr->loc, "logical not requires boolean operand");
-                    return st_bool(s->types);
+                    expr->sema_type = st_bool(s->types);
+                    break;
                 case TOK_STAR:
-                    if (o->kind == ST_POINTER) return o->as.pointer.base;
-                    if (o->kind == ST_REFERENCE) return o->as.reference.base;
-                    sema_report(s, expr->loc, "cannot dereference non-pointer type");
-                    return st_void(s->types);
-                case TOK_AMPERSAND: return st_reference(s->types, false, o);
-                default: return o;
+                    if (o->kind == ST_POINTER) expr->sema_type = o->as.pointer.base;
+                    else if (o->kind == ST_REFERENCE) expr->sema_type = o->as.reference.base;
+                    else { sema_report(s, expr->loc, "cannot dereference non-pointer type"); expr->sema_type = st_void(s->types); }
+                    break;
+                case TOK_AMPERSAND:
+                    expr->sema_type = st_reference(s->types, false, o);
+                    break;
+                default:
+                    expr->sema_type = o;
+                    break;
             }
+            return expr->sema_type;
         }
         case AST_CALL_EXPR: {
             SType *c = sema_check_expr(s, expr->call_expr.callee);
-            if (c->kind != ST_FUNCTION) { sema_report(s, expr->loc, "called object is not a function"); return st_void(s->types); }
-            return c->as.function.ret;
+            if (c->kind != ST_FUNCTION) { sema_report(s, expr->loc, "called object is not a function"); expr->sema_type = st_void(s->types); return expr->sema_type; }
+            expr->sema_type = c->as.function.ret;
+            return expr->sema_type;
         }
         case AST_CAST_EXPR: {
             SType *t = sema_resolve_type(s, expr->cast_expr.type);
             sema_check_expr(s, expr->cast_expr.expr);
+            expr->sema_type = t;
             return t;
         }
         case AST_TRY_EXPR: {
             SType *inner = sema_check_expr(s, expr->try_expr.expr);
-            if (inner->kind != ST_ERROR_UNION) { sema_report(s, expr->loc, "try requires error union type, got '%s'", st_name(inner)); return inner; }
-            return inner->as.error_union.base;
+            if (inner->kind != ST_ERROR_UNION) { sema_report(s, expr->loc, "try requires error union type, got '%s'", st_name(inner)); expr->sema_type = inner; return inner; }
+            expr->sema_type = inner->as.error_union.base;
+            return expr->sema_type;
         }
-        case AST_UNSAFE_BLOCK_EXPR: return sema_check_block(s, expr->unsafe_block_expr.body);
+        case AST_UNSAFE_BLOCK_EXPR:
+            expr->sema_type = sema_check_block(s, expr->unsafe_block_expr.body);
+            return expr->sema_type;
         case AST_FIELD_ACCESS_EXPR: {
-            sema_check_expr(s, expr->field_access_expr.object);
-            return st_void(s->types);
+            SType *base = sema_check_expr(s, expr->field_access_expr.object);
+            SType *struct_type = base;
+            if (base->kind == ST_POINTER) struct_type = base->as.pointer.base;
+            if (base->kind == ST_REFERENCE) struct_type = base->as.reference.base;
+            
+            AstNode *decl = NULL;
+            AstNodeList *fields = sema_get_type_fields(s, struct_type, &decl);
+            if (!fields) {
+                sema_report(s, expr->loc, "field access on non-struct type '%s'", st_name(base));
+                expr->sema_type = st_void(s->types);
+                return expr->sema_type;
+            }
+            
+            StringView fname = expr->field_access_expr.field_name;
+            for (size_t i = 0; i < fields->count; i++) {
+                AstNode *f = fields->items[i];
+                if (sv_eq(f->field_decl.name, fname)) {
+                    expr->sema_type = sema_resolve_type(s, f->field_decl.type);
+                    return expr->sema_type;
+                }
+            }
+            sema_report(s, expr->loc, "struct '%s' has no field '%.*s'", st_name(struct_type), SV_ARG(fname));
+            expr->sema_type = st_void(s->types);
+            return expr->sema_type;
         }
         case AST_INDEX_EXPR: {
             SType *obj = sema_check_expr(s, expr->index_expr.object);
             sema_check_expr(s, expr->index_expr.index);
-            if (obj->kind == ST_ARRAY) return obj->as.array.base;
-            if (obj->kind == ST_SLICE) return obj->as.slice.base;
-            return st_void(s->types);
+            if (obj->kind == ST_ARRAY) expr->sema_type = obj->as.array.base;
+            else if (obj->kind == ST_SLICE) expr->sema_type = obj->as.slice.base;
+            else expr->sema_type = st_void(s->types);
+            return expr->sema_type;
         }
         case AST_SLICE_EXPR: {
             sema_check_expr(s, expr->slice_expr.object);
             if (expr->slice_expr.start) sema_check_expr(s, expr->slice_expr.start);
             if (expr->slice_expr.end) sema_check_expr(s, expr->slice_expr.end);
-            return st_void(s->types);
+            expr->sema_type = st_void(s->types);
+            return expr->sema_type;
         }
         case AST_ARRAY_LITERAL: {
             for (size_t i = 0; i < expr->array_literal.elements.count; i++) sema_check_expr(s, expr->array_literal.elements.items[i]);
-            return st_void(s->types);
+            expr->sema_type = st_void(s->types);
+            return expr->sema_type;
         }
         case AST_STRUCT_LITERAL: {
-            for (size_t i = 0; i < expr->struct_literal.fields.count; i++) sema_check_expr(s, expr->struct_literal.fields.items[i]);
-            return st_void(s->types);
+            SType *st = expr->struct_literal.type ? sema_resolve_type(s, expr->struct_literal.type) : st_void(s->types);
+            expr->sema_type = st;
+            AstNode *decl = NULL;
+            AstNodeList *decl_fields = sema_get_type_fields(s, st, &decl);
+            if (!decl_fields && expr->struct_literal.type) {
+                sema_report(s, expr->loc, "cannot resolve fields for type '%s'", st_name(st));
+                return st;
+            }
+            for (size_t i = 0; i < expr->struct_literal.fields.count; i++) {
+                AstNode *field = expr->struct_literal.fields.items[i];
+                if (field->kind != AST_ASSIGN_STMT || field->assign_stmt.lhs->kind != AST_IDENTIFIER) {
+                    sema_report(s, field->loc, "invalid struct field initializer");
+                    continue;
+                }
+                StringView fname = field->assign_stmt.lhs->identifier.name;
+                SType *fval = sema_check_expr(s, field->assign_stmt.rhs);
+                bool found = false;
+                for (size_t j = 0; j < decl_fields->count; j++) {
+                    AstNode *df = decl_fields->items[j];
+                    if (sv_eq(df->field_decl.name, fname)) {
+                        found = true;
+                        SType *ftype = sema_resolve_type(s, df->field_decl.type);
+                        if (!st_can_coerce(fval, ftype)) {
+                            sema_report(s, field->loc, "field '%.*s' expects '%s', got '%s'",
+                                SV_ARG(fname), st_name(ftype), st_name(fval));
+                        }
+                        break;
+                    }
+                }
+                if (!found) {
+                    sema_report(s, field->loc, "struct '%s' has no field '%.*s'",
+                        st_name(st), SV_ARG(fname));
+                }
+            }
+            return st;
         }
         case AST_METHOD_CALL_EXPR: {
             sema_check_expr(s, expr->method_call_expr.receiver);
-            return st_void(s->types);
+            expr->sema_type = st_void(s->types);
+            return expr->sema_type;
         }
-        case AST_MATCH_ARM: return sema_check_expr(s, expr->match_arm.expr);
-        default: return st_void(s->types);
+        case AST_MATCH_ARM:
+            expr->sema_type = sema_check_expr(s, expr->match_arm.expr);
+            return expr->sema_type;
+        default:
+            expr->sema_type = st_void(s->types);
+            return expr->sema_type;
     }
 }
+

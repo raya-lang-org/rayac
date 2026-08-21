@@ -11,6 +11,7 @@
 typedef struct AstNode AstNode;
 typedef struct TypeExpr TypeExpr;
 typedef struct Pattern Pattern;
+typedef struct SType SType;
 
 typedef enum {
     AST_COMPILATION_UNIT,
@@ -166,6 +167,7 @@ struct Pattern {
 struct AstNode {
     AstNodeKind kind;
     SourceLocation loc;
+    SType *sema_type;
     union {
         struct {
             StringView module_name;
@@ -190,6 +192,12 @@ struct AstNode {
             AstNode* body;
             AttributeList attrs;
         } fn_decl;
+        struct {
+            StringView name;
+            bool is_pub;
+            AstNodeList fields;
+            AttributeList attrs;
+        } union_decl;
         struct {
             StringView name;
             bool is_pub;
@@ -306,7 +314,7 @@ struct AstNode {
         struct { StringView value; } string_literal;
         struct { StringView value; } char_literal;
         struct { bool value; } bool_literal;
-        struct { StringView name; } identifier;
+        struct { StringView name; struct Symbol *sym;} identifier;
         struct {
             TokenKind op;
             AstNode* left;
