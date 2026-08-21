@@ -1,0 +1,2 @@
+struct Point { x: f32, y: f32 }
+const p = Point{ x: 1, y: 2.0 };

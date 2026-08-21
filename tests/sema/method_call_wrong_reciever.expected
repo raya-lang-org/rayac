@@ -1,0 +1,1 @@
+error: method 'get' expects receiver of type '&const A', found 'B'

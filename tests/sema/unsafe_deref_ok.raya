@@ -1,0 +1,6 @@
+fn good(ptr: *i32) -> i32 {
+    return unsafe { *ptr };
+}
+unsafe fn also_good(ptr: *i32) -> i32 {
+    return *ptr;
+}

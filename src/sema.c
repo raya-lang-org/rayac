@@ -8,26 +8,31 @@
 /* ========================================================================
  *  Method Table — linked list of (type_name, method_name) → fn_decl
  * ======================================================================== */
-struct MethodEntry {
-    StringView type_name;
-    StringView method_name;
-    AstNode *fn_decl;
-    struct MethodEntry *next;
-};
+
+static uint64_t hash_method_key(StringView type, StringView name) {
+    uint64_t h = 0xcbf29ce484222325;
+    for (size_t i = 0; i < type.len; i++) h = (h ^ type.data[i]) * 0x100000001b3;
+    for (size_t i = 0; i < name.len; i++) h = (h ^ name.data[i]) * 0x100000001b3;
+    return h;
+}
 
 static void method_table_add(Sema *s, StringView type_name, StringView method_name, AstNode *fn_decl)
 {
+    uint64_t h = hash_method_key(type_name, method_name);
+    size_t idx = h % METHOD_TABLE_BUCKETS;
     MethodEntry *e = arena_alloc(s->arena, sizeof(MethodEntry));
     e->type_name = type_name;
     e->method_name = method_name;
     e->fn_decl = fn_decl;
-    e->next = s->method_table;
-    s->method_table = e;
+    e->next = s->method_table.buckets[idx];
+    s->method_table.buckets[idx] = e;
 }
 
 static AstNode *method_table_lookup(Sema *s, StringView type_name, StringView method_name)
 {
-    for (MethodEntry *e = s->method_table; e; e = e->next) {
+    uint64_t h = hash_method_key(type_name, method_name);
+    size_t idx = h % METHOD_TABLE_BUCKETS;
+    for (MethodEntry *e = s->method_table.buckets[idx]; e; e = e->next) {
         if (sv_eq(e->type_name, type_name) && sv_eq(e->method_name, method_name))
             return e->fn_decl;
     }
@@ -74,7 +79,9 @@ Sema *sema_new(Arena *arena, DiagnosticEngine *diag)
     s->in_unsafe = false;
     s->current_fn_has_return = false;
     s->in_collect_decls = false;
-    s->method_table = NULL;
+    memset(&s->method_table, 0, sizeof(s->method_table));
+    
+
     return s;
 }
 

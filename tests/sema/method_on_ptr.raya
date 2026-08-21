@@ -1,0 +1,7 @@
+struct Node { val: i32 }
+extend Node {
+    pub fn next(self: &Node) -> &Node { return self; }
+}
+const n = Node{ val: 1 };
+const p = &n;
+const q = p.next();

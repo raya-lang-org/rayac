@@ -1,0 +1,4 @@
+fn not_a_type() -> void {}
+extend not_a_type {
+    pub fn bad(self: &Self) -> void {}
+}

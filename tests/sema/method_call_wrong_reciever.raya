@@ -1,0 +1,7 @@
+struct A { val: i32 }
+struct B { val: i32 }
+extend A {
+    pub fn get(self: &const A) -> i32 { return self.val; }
+}
+const b = B{ val: 42 };
+const x = b.get();

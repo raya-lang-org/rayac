@@ -1,0 +1,8 @@
+struct Point { x: f32, y: f32 }
+extend Point {
+    pub fn add(self: &Point, other: &Point) -> Point { return self; }
+    pub fn length(self: &const Point) -> f32 { return 0.0; }
+}
+const a = Point{ x: 1.0, y: 2.0 };
+const b = Point{ x: 3.0, y: 4.0 };
+const len = a.add(b).length();

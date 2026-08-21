@@ -1,6 +1,6 @@
-
 #ifndef RAYA_SEMA_H
 #define RAYA_SEMA_H
+#define METHOD_TABLE_BUCKETS 64
 
 #include "common.h"
 #include "arena.h"
@@ -10,7 +10,17 @@
 #include "diag.h"
 
 typedef struct AstNode AstNode;
-typedef struct MethodEntry MethodEntry;
+
+typedef struct MethodEntry {
+    StringView type_name;
+    StringView method_name;
+    AstNode *fn_decl;
+    struct MethodEntry *next;
+} MethodEntry;
+
+typedef struct {
+    MethodEntry *buckets[METHOD_TABLE_BUCKETS];
+} MethodTable;
 
 typedef struct Sema Sema;
 
@@ -26,7 +36,7 @@ struct Sema {
     bool in_unsafe;
     bool current_fn_has_return;
     bool in_collect_decls;
-    MethodEntry *method_table;
+    MethodTable method_table;   // ← was MethodEntry, now MethodTable
 };
 
 Sema *sema_new(Arena *arena, DiagnosticEngine *diag);
