@@ -361,21 +361,32 @@ int main(int argc, char** argv) {
         }
         codegen_c_emit(ast, out);
         fclose(out);
+        printf("Generated: %s\n", c_path);
 
         char cmd[2048];
-        char out_dir[1024];
-            snprintf(out_dir, sizeof(out_dir), "%s", input_file);
-            char *last_slash = strrchr(out_dir, '/');
-            if (last_slash) {
-                *last_slash = '\0';
-            } else {
-                out_dir[0] = '.';
-                out_dir[1] = '\0';
-            }
+        snprintf(cmd, sizeof(cmd),
+            "cc -O2 -std=c11 -Isrc %s src/raya_rt.c -o %s",
+            c_path, bin_path);
+        printf("Running: %s\n", cmd);
+        int ret = system(cmd);
+        if (ret != 0) {
+            fprintf(stderr, "error: C compilation failed\n");
+            free(tokens);
+            arena_free_all(&arena);
+            free(source);
+            return 1;
+        }
 
-            snprintf(cmd, sizeof(cmd),
-                "cc -O2 -std=c11 -Isrc %s src/raya_rt.c -o %s",
-                c_path, bin_path);
+        printf("Built: %s\n", bin_path);
+
+        for (size_t i = 0; i < diag.count; i++) {
+            free((void*)diag.items[i].message.data);
+        }
+        free(diag.items);
+        free(tokens);
+        arena_free_all(&arena);
+        free(source);
+        return 0;
     }
 
     if (g_test_parser) {
