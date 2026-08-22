@@ -1,0 +1,15 @@
+--- a/src/parser.c
++++ b/src/parser.c
+@@ -727,8 +727,9 @@ static AstNode *parser_parse_top_level_decl(Parser *p)
+             bool is_const = (k == TOK_CONST);
+             p->pos++;
+             const Token *name = parser_current(p);
+             parser_expect(p, TOK_IDENTIFIER, "expected identifier");
+-            parser_expect(p, TOK_COLON, "expected ':'");
+-            TypeExpr *type = parser_parse_type(p);
++            TypeExpr *type = NULL;
++            if (parser_match(p, TOK_COLON))
++                type = parser_parse_type(p);
+             parser_expect(p, TOK_ASSIGN, "expected '='");
+             AstNode *init = parser_parse_expr(p);
+             parser_expect(p, TOK_SEMICOLON, "expected ';'");

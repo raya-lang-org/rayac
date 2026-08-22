@@ -915,8 +915,9 @@ static AstNode *parser_parse_struct_decl(Parser *p, bool is_pub, AttributeList a
             field->field_decl.default_value = parser_parse_expr(p);
         }
 
-        parser_expect(p, TOK_COMMA, "expected ',' after field declaration");
         ast_struct_add_field(p->arena, s, field);
+        if (!parser_match(p, TOK_COMMA))
+            break;
     }
     parser_expect(p, TOK_RBRACE, "expected '}'");
     return s;
@@ -956,8 +957,9 @@ static AstNode *parser_parse_union_decl(Parser *p, bool is_pub, AttributeList at
             field->field_decl.default_value = parser_parse_expr(p);
         }
 
-        parser_expect(p, TOK_COMMA, "expected ',' after field declaration");
         ast_struct_add_field(p->arena, u, field);
+        if (!parser_match(p, TOK_COMMA))
+            break;
     }
     parser_expect(p, TOK_RBRACE, "expected '}'");
     return u;
@@ -992,8 +994,9 @@ static AstNode *parser_parse_enum_decl(Parser *p, bool is_pub, AttributeList att
             variant->variant_decl.discriminant = parser_parse_expr(p);
         }
 
-        parser_expect(p, TOK_COMMA, "expected ',' after variant");
         ast_enum_add_variant(p->arena, e, variant);
+        if (!parser_match(p, TOK_COMMA))
+            break;
     }
     parser_expect(p, TOK_RBRACE, "expected '}'");
     return e;
@@ -1015,7 +1018,10 @@ static AstNode *parser_parse_traits_decl(Parser *p, bool is_pub, AttributeList a
         if (parser_check(p, TOK_RBRACE)) break;
 
         bool method_pub = parser_match(p, TOK_PUB);
-        parser_expect(p, TOK_FN, "expected 'fn' in trait method");
+        if (!parser_expect(p, TOK_FN, "expected 'fn' in trait method")) {
+            if (!parser_at_end(p)) p->pos++;
+            continue;
+        }
 
         const Token *method_name = parser_current(p);
         parser_expect(p, TOK_IDENTIFIER, "expected method name");
@@ -1072,7 +1078,10 @@ static AstNode *parser_parse_extend_decl(Parser *p, bool is_pub, AttributeList a
         bool fn_pub = parser_match(p, TOK_PUB);
         bool fn_comptime = parser_match(p, TOK_COMPTIME);
         bool fn_unsafe = parser_match(p, TOK_UNSAFE);
-        parser_expect(p, TOK_FN, "expected 'fn'");
+        if (!parser_expect(p, TOK_FN, "expected 'fn'")) {
+            if (!parser_at_end(p)) p->pos++;
+            continue;
+        }
 
         const Token *fn_name = parser_current(p);
         parser_expect(p, TOK_IDENTIFIER, "expected function name");
@@ -1177,8 +1186,9 @@ static AstNode *parser_parse_top_level_decl(Parser *p)
             p->pos++;
             const Token *name = parser_current(p);
             parser_expect(p, TOK_IDENTIFIER, "expected identifier");
-            parser_expect(p, TOK_COLON, "expected ':'");
-            TypeExpr *type = parser_parse_type(p);
+            TypeExpr *type = NULL;
+            if (parser_match(p, TOK_COLON))
+                type = parser_parse_type(p);
             parser_expect(p, TOK_ASSIGN, "expected '='");
             AstNode *init = parser_parse_expr(p);
             parser_expect(p, TOK_SEMICOLON, "expected ';'");

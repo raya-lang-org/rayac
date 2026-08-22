@@ -420,7 +420,8 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
             if (stmt->var_decl.type) {
                 decl_type = sema_resolve_type(s, stmt->var_decl.type);
                 if (stmt->var_decl.init && !st_can_coerce(init_type, decl_type))
-                    sema_report(s, stmt->loc, "cannot initialize variable of type '%s' with '%s'", st_name(decl_type), st_name(init_type));
+                    sema_report(s, stmt->loc, "cannot initialize variable '%.*s' of type '%s' with '%s'",
+                        SV_ARG(stmt->var_decl.name), st_name(decl_type), st_name(init_type));
             } else {
                 decl_type = init_type;
             }

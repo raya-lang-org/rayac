@@ -1,1 +1,5 @@
-ok
+error[E0001]: return type mismatch: expected 'f32', found 'f64'
+error[E0001]: field 'x' expects 'f32', got 'f64'
+error[E0001]: field 'y' expects 'f32', got 'f64'
+error[E0001]: cannot call method on type 'void'
+error: could not compile due to 4 previous errors

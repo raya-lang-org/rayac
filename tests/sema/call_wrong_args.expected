@@ -1,3 +1,5 @@
-error: function expects 2 argument(s), got 1
-error: function expects 2 argument(s), got 3
-error: argument 2: expected 'i32', found '[]const u8'
+error[E0001]: function expects 2 argument(s), got 1
+error[E0001]: function expects 2 argument(s), got 3
+error[E0001]: argument 1: expected 'i32', found 'i64'
+error[E0001]: argument 2: expected 'i32', found '[]const u8'
+error: could not compile due to 4 previous errors

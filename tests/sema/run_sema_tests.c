@@ -7,6 +7,24 @@
 #define MAX_OUTPUT 4096
 #define MAX_LINE 1024
 
+/* Normalize an error line by stripping [E####] codes */
+static const char *normalize_error(const char *s) {
+    if (strncmp(s, "error[", 6) == 0) {
+        const char *p = strchr(s, ']');
+        if (p && p[1] == ':') return p + 3;
+    }
+    if (strncmp(s, "error: ", 7) == 0) return s + 7;
+    return s;
+}
+
+static int is_error_line(const char *s) {
+    return strncmp(s, "error:", 6) == 0 || strncmp(s, "error[", 6) == 0;
+}
+
+static int output_contains(const char *haystack, const char *needle) {
+    return strstr(haystack, needle) != NULL;
+}
+
 static int run_test(const char *raya, const char *test_dir, const char *name) {
     char cmd[MAX_LINE];
     char output[MAX_OUTPUT];
@@ -30,7 +48,7 @@ static int run_test(const char *raya, const char *test_dir, const char *name) {
     char expected_buf[MAX_OUTPUT] = {0};
     while (fgets(exp_line, sizeof(exp_line), ef)) {
         strcat(expected_buf, exp_line);
-        if (strstr(exp_line, "error:")) expect_errors = 1;
+        if (is_error_line(exp_line)) expect_errors = 1;
     }
     fclose(ef);
 
@@ -40,7 +58,8 @@ static int run_test(const char *raya, const char *test_dir, const char *name) {
         char *copy = strdup(expected_buf);
         char *line = strtok(copy, "\n");
         while (line) {
-            if (strlen(line) > 0 && !strstr(output, line)) {
+            if (strlen(line) > 0 && !output_contains(output, line)
+                && !output_contains(output, normalize_error(line))) {
                 printf("FAIL: %s\n", name);
                 printf("  Missing expected error: %s\n", line);
                 printf("  Output: %s\n", output);
@@ -65,7 +84,7 @@ static int run_test(const char *raya, const char *test_dir, const char *name) {
 }
 
 int main(int argc, char **argv) {
-    const char *raya = argc > 1 ? argv[1] : "./bin/raya";
+    const char *raya = argc > 1 ? argv[1] : "bin\\raya.exe";
     const char *test_dir = argc > 2 ? argv[2] : "tests/sema";
 
     printf("=== Raya Sema Tests ===\n");

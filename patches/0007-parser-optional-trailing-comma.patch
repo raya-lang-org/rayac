@@ -1,0 +1,35 @@
+--- a/src/parser.c
++++ b/src/parser.c
+@@ -557,8 +557,9 @@ static AstNode *parser_parse_struct_decl(Parser *p, bool is_pub, AttributeList a
+             field->field_decl.default_value = parser_parse_expr(p);
+         }
+
+-        parser_expect(p, TOK_COMMA, "expected ',' after field declaration");
+         ast_struct_add_field(p->arena, s, field);
++        if (!parser_match(p, TOK_COMMA))
++            break;
+     }
+     parser_expect(p, TOK_RBRACE, "expected '}'");
+     return s;
+@@ -604,8 +605,9 @@ static AstNode *parser_parse_union_decl(Parser *p, bool is_pub, AttributeList at
+             field->field_decl.default_value = parser_parse_expr(p);
+         }
+
+-        parser_expect(p, TOK_COMMA, "expected ',' after field declaration");
+         ast_struct_add_field(p->arena, u, field);
++        if (!parser_match(p, TOK_COMMA))
++            break;
+     }
+     parser_expect(p, TOK_RBRACE, "expected '}'");
+     return u;
+@@ -641,8 +643,9 @@ static AstNode *parser_parse_enum_decl(Parser *p, bool is_pub, AttributeList at
+             variant->variant_decl.discriminant = parser_parse_expr(p);
+         }
+
+-        parser_expect(p, TOK_COMMA, "expected ',' after variant");
+         ast_enum_add_variant(p->arena, e, variant);
++        if (!parser_match(p, TOK_COMMA))
++            break;
+     }
+     parser_expect(p, TOK_RBRACE, "expected '}'");
+     return e;
