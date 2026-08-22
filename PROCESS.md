@@ -127,6 +127,22 @@ Repository: https://github.com/raya-lang-org/rayac
 | Backend | ❌ Not Started | Decision pending |
 | Standard Library | ❌ Not Started | Post-backend |
 
+| Feature                           | Status                      |
+| --------------------------------- | --------------------------- |
+| Primitives (i32, f64, bool, etc.) | ✅                           |
+| Structs, unions, enums            | ✅                           |
+| Methods (by-value receiver)       | ✅                           |
+| Function calls                    | ✅                           |
+| Field access                      | ✅                           |
+| Arithmetic, comparisons           | ✅                           |
+| if/else, while, for               | ✅                           |
+| defer                             | ✅                           |
+| String literals → `raya_Str`      | ✅                           |
+| C interop (`extern fn`)           | ✅                           |
+| Auto-ref for pointer receivers    | ⚠️ sema bug, by-value works |
+| Generics, comptime, traits        | ❌ not built yet             |
+
+
 **Test Coverage:**
 
 | Layer | Current | Target | Priority |
