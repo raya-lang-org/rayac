@@ -24,10 +24,27 @@ typedef struct {
     int defer_depth;
     int loop_defer_base[MAX_DEFER_DEPTH];
     int loop_depth;
+    AstNode *unit;
 } CGen;
 
 static void cg_indent(CGen *cg) {
     for (int i = 0; i < cg->indent; i++) fprintf(cg->out, "    ");
+}
+
+static AstNode *cg_find_method(CGen *cg, StringView type_name, StringView method_name) {
+    if (!cg->unit) return NULL;
+    for (size_t i = 0; i < cg->unit->compilation_unit.decls.count; i++) {
+        AstNode *decl = cg->unit->compilation_unit.decls.items[i];
+        if (decl->kind == AST_EXTEND_DECL) {
+            if (sv_eq(decl->extend_decl.target_name, type_name)) {
+                for (size_t j = 0; j < decl->extend_decl.methods.count; j++) {
+                    AstNode *m = decl->extend_decl.methods.items[j];
+                    if (sv_eq(m->fn_decl.name, method_name)) return m;
+                }
+            }
+        }
+    }
+    return NULL;
 }
 
 static int cg_next_temp(CGen *cg) {
@@ -558,11 +575,6 @@ static StringView cg_type_name(SType *type) {
     }
 }
 
-static bool cg_needs_address(AstNode *receiver) {
-    if (!receiver || !receiver->sema_type) return false;
-    SType *t = receiver->sema_type;
-    return t->kind != ST_POINTER && t->kind != ST_REFERENCE && t->kind != ST_SLICE;
-}
 
 static bool cg_is_pointer_type(AstNode *obj) {
     if (!obj || !obj->sema_type) return false;
@@ -643,13 +655,25 @@ static void cg_emit_expr(CGen *cg, AstNode *expr) {
             break;
         }
         case AST_METHOD_CALL_EXPR: {
-            SType *recv_type = expr->method_call_expr.receiver->sema_type;
+          SType *recv_type = expr->method_call_expr.receiver->sema_type;
             StringView type_name = cg_type_name(recv_type);
             fprintf(cg->out, "raya_%.*s_%.*s(",
                 (int)type_name.len, type_name.data,
                 (int)expr->method_call_expr.method_name.len,
                 expr->method_call_expr.method_name.data);
-            if (cg_needs_address(expr->method_call_expr.receiver)) {
+
+            AstNode *method = cg_find_method(cg, type_name, expr->method_call_expr.method_name);
+            bool needs_ref = false;
+            if (method && method->fn_decl.params.count > 0) {
+                AstNode *first = method->fn_decl.params.items[0];
+                if (first->kind == AST_PARAM_DECL && first->param_decl.type) {
+                    TypeExpr *te = first->param_decl.type;
+                    needs_ref = (te->kind == TYPE_REFERENCE || te->kind == TYPE_POINTER);
+                }
+            }
+
+            bool receiver_is_ptr = cg_is_pointer_type(expr->method_call_expr.receiver);
+            if (needs_ref && !receiver_is_ptr) {
                 fprintf(cg->out, "&");
             }
             cg_emit_expr(cg, expr->method_call_expr.receiver);
@@ -975,5 +999,6 @@ void codegen_c_emit(AstNode *module, FILE *out) {
     cg.in_unsafe = false;
     cg.defer_depth = -1;
     cg.loop_depth = 0;
+    cg.unit = module;
     cg_emit_compilation_unit(&cg, module);
 }

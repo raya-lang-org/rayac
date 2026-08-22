@@ -29,7 +29,7 @@ int32_t  add(int32_t a, int32_t b) {
 
 int32_t  main() {
     struct raya_Point p = (struct raya_Point){.x = 10, .y = 20};
-    int32_t s = raya_Point_sum(&p);
+    int32_t s = raya_Point_sum(p);
     int32_t t = add(s, 5);
     return t;
 }
