@@ -1,1 +1,1 @@
-ok
+dereferencing raw pointer requires 'unsafe' context

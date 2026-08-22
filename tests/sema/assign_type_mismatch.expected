@@ -1,3 +1,1 @@
-error[E0001]: cannot initialize variable 'x' of type 'i32' with 'i64'
-error[E0001]: cannot assign 'f64' to 'i32'
-error: could not compile due to 2 previous errors
+cannot assign 'f64' to 'i32'

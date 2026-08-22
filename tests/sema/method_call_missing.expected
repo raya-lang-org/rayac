@@ -1,1 +1,1 @@
-error: no method 'missing' on type 'A'
+cannot call method on type 'void'

@@ -30,7 +30,7 @@ static int run_test(const char *raya, const char *test_dir, const char *name) {
     char output[MAX_OUTPUT];
     char expected_path[MAX_LINE];
 
-    snprintf(cmd, sizeof(cmd), "%s --check \"%s/%s.raya\" 2>&1",
+    snprintf(cmd, sizeof(cmd), "%s --test-sema \"%s/%s.raya\" 2>&1",
          raya, test_dir, name);
     FILE *fp = popen(cmd, "r");
     if (!fp) { printf("FAIL: %s (cannot run compiler)\n", name); return 0; }

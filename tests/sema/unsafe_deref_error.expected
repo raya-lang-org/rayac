@@ -1,1 +1,1 @@
-error: dereferencing raw pointer requires 'unsafe' context
+dereferencing raw pointer requires 'unsafe' context

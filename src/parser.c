@@ -232,10 +232,14 @@ static AstNode *parser_parse_primary(Parser *p)
             p->pos++;
             return ast_new_undefined_literal(p->arena, tok->loc);
         }
+        case TOK_SELF: {
+            p->pos++;
+            return ast_new_identifier(p->arena, sv_from_cstr("self"), tok->loc);
+        }
         case TOK_IDENTIFIER: {
             p->pos++;
             AstNode *node = ast_new_identifier(p->arena, tok->text, tok->loc);
-            if (parser_check(p, TOK_LBRACE)) {
+            if (parser_check(p, TOK_LBRACE) && tok->text.len > 0 && tok->text.data[0] >= 'A' && tok->text.data[0] <= 'Z') {
                 TypeExpr *type = type_new_named(p->arena, tok->text, tok->loc);
                 return parser_parse_struct_literal(p, type);
             }
@@ -727,6 +731,11 @@ TypeExpr *parser_parse_type(Parser *p)
         }
     } else if (parser_match(p, TOK_TYPE)) {
         primary = type_new_named(p->arena, sv_from_cstr("type"), loc);
+    } else if (parser_match(p, TOK_SELF)) {
+        primary = type_new_named(p->arena, sv_from_cstr("Self"), loc);
+    } else if (parser_check(p, TOK_IDENTIFIER) && sv_eq_cstr(tok->text, "Self")) {
+        p->pos++;
+        primary = type_new_named(p->arena, sv_from_cstr("Self"), loc);
     } else if (parser_check(p, TOK_IDENTIFIER)) {
         p->pos++;
         primary = type_new_named(p->arena, tok->text, loc);
@@ -1162,6 +1171,10 @@ static AstNode *parser_parse_top_level_decl(Parser *p)
     bool is_pub = parser_match(p, TOK_PUB);
 
     TokenKind k = parser_current(p)->kind;
+
+    if (k == TOK_UNSAFE && parser_peek(p, 1)->kind == TOK_FN) {
+        return parser_parse_fn_decl(p, is_pub, attrs);
+    }
 
     switch (k) {
         case TOK_FN:

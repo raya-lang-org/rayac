@@ -1,2 +1,1 @@
-error[E0001]: struct 'Point' has no field 'z'
-error: could not compile due to 1 previous error
+struct 'Point' has no field 'z'

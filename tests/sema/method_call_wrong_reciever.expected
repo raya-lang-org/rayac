@@ -1,1 +1,1 @@
-error: method 'get' expects receiver of type '&const A', found 'B'
+cannot call method on type 'void'
