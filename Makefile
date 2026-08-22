@@ -1,5 +1,5 @@
 # Compiler and flags
-CC       := C:\ProgramData\mingw64\mingw64\bin\gcc.exe
+CC       := gcc
 CFLAGS   := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
 LDFLAGS  :=
 

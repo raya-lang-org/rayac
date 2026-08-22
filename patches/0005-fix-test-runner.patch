@@ -1,0 +1,9 @@
+--- a/Makefile
++++ b/Makefile
+@@ -117,30 +117,43 @@ test-parser: all
+ # ============================================================================
+
+ test-sema: all
+ 	@echo "Running sema tests..."
+-	@passed=0; failed=0; -	for f in $(TESTDIR)/sema/*.raya; do -		name=$$(basename "$$f" .raya); -		expected="$(TESTDIR)/sema/$$name.expected"; -		actual="$(TESTDIR)/sema/$$name.actual"; -		if [ ! -f "$$expected" ]; then -			echo "  SKIP  $$f (no .expected)"; -			continue; -		fi; -		$(TARGET) --test-sema "$$f" > "$$actual" 2>/dev/null || true; -		if tr -d '\r' < "$$expected" | cmp -s - <(tr -d '\r' < "$$actual"); then -			echo "  PASS  $$f"; -			passed=$$((passed + 1)); -		else -			echo "  FAIL  $$f"; -			echo "  diff expected actual:"; -			diff -u -				<(tr -d '\r' < "$$expected") -				<(tr -d '\r' < "$$actual") || true; -			failed=$$((failed + 1)); -		fi; -		rm -f "$$actual"; -	done; -	echo "Sema: $$passed passed, $$failed failed"; -	test $$failed -eq 0
++	@tmp=$$(mktemp -d); +	passed=0; failed=0; total=0; +	for f in $(TESTDIR)/sema/*.raya; do +		name=$$(basename "$$f" .raya); +		expected="$(TESTDIR)/sema/$$name.expected"; +		[ -f "$$expected" ] || continue; +		total=$$((total + 1)); +		$(TARGET) --test-sema "$$f" > "$$tmp/$$name.actual" 2>/dev/null || true; +		if tr -d '\r' < "$$expected" | cmp -s - <(tr -d '\r' < "$$tmp/$$name.actual"); then +			echo "  PASS  $$name"; +			passed=$$((passed + 1)); +		else +			echo "  FAIL  $$name"; +			echo "  diff expected actual:"; +			diff -u +				<(tr -d '\r' < "$$expected") +				<(tr -d '\r' < "$$tmp/$$name.actual") || true; +			failed=$$((failed + 1)); +		fi; +	done; +	rm -rf "$$tmp"; +	echo "Sema: $$passed/$$total passed, $$failed failed"; +	test $$failed -eq 0

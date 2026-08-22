@@ -242,17 +242,17 @@ SType *sema_resolve_type(Sema *s, TypeExpr *type_expr)
             if (sv_eq_cstr(n, "isize"))  return st_int(s->types, true, 64);
             if (sv_eq_cstr(n, "usize"))  return st_int(s->types, false, 64);
             if (n.len > 1 && n.data[0] == 'i') {
-                int b = atoi((const char *)n.data + 1);
+                int b = sv_to_int(sv_slice(n, 1, n.len));
                 if (b == 8 || b == 16 || b == 32 || b == 64 || b == 128)
                     return st_int(s->types, true, b);
             }
             if (n.len > 1 && n.data[0] == 'u') {
-                int b = atoi((const char *)n.data + 1);
+                int b = sv_to_int(sv_slice(n, 1, n.len));
                 if (b == 8 || b == 16 || b == 32 || b == 64 || b == 128)
                     return st_int(s->types, false, b);
             }
             if (n.len > 1 && n.data[0] == 'f') {
-                int b = atoi((const char *)n.data + 1);
+                int b = sv_to_int(sv_slice(n, 1, n.len));
                 if (b == 32 || b == 64)
                     return st_float(s->types, b);
             }

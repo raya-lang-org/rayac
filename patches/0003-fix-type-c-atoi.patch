@@ -1,0 +1,38 @@
+--- a/src/type.c
++++ b/src/type.c
+@@ -189,17 +189,24 @@ SType *st_from_ast(TypeTable *tt, TypeExpr *te) {
+             if (sv_eq_cstr(n, "void")) return st_void(tt);
+             if (sv_eq_cstr(n, "bool")) return st_bool(tt);
+             if (sv_eq_cstr(n, "isize")) return st_int(tt, true, 64);
+             if (sv_eq_cstr(n, "usize")) return st_int(tt, false, 64);
+-            if (n.len > 1 && n.data[0] == 'i') { int b = atoi(n.data+1); if (b==8||b==16||b==32||b==64||b==128) return st_int(tt, true, b); }
+-            if (n.len > 1 && n.data[0] == 'u') { int b = atoi(n.data+1); if (b==8||b==16||b==32||b==64||b==128) return st_int(tt, false, b); }
+-            if (n.len > 1 && n.data[0] == 'f') { int b = atoi(n.data+1); if (b==32||b==64) return st_float(tt, b); }
++            if (n.len > 1 && n.data[0] == 'i') {
++                int b = sv_to_int(sv_slice(n, 1, n.len));
++                if (b == 8 || b == 16 || b == 32 || b == 64 || b == 128)
++                    return st_int(tt, true, b);
++            }
++            if (n.len > 1 && n.data[0] == 'u') {
++                int b = sv_to_int(sv_slice(n, 1, n.len));
++                if (b == 8 || b == 16 || b == 32 || b == 64 || b == 128)
++                    return st_int(tt, false, b);
++            }
++            if (n.len > 1 && n.data[0] == 'f') {
++                int b = sv_to_int(sv_slice(n, 1, n.len));
++                if (b == 32 || b == 64)
++                    return st_float(tt, b);
++            }
+             if (sv_eq_cstr(n, "noreturn")) {
+                 SType t = {.kind = ST_NORETURN};
+                 SType *p = arena_alloc(tt->arena, sizeof(SType));
+                 memcpy(p, &t, sizeof(t));
+                 return intern_type(tt, p);
+             }
+-            SType t = {.kind = ST_STRUCT}; t.as.struct_.name = n; SType *p = arena_alloc(tt->arena, sizeof(SType)); memcpy(p, &t, sizeof(t)); return intern_type(tt, p);
++            /* Unknown type names are NOT silently turned into placeholder structs.
++               The caller (sema_resolve_type) is responsible for reporting the error. */
++            return NULL;
+         }
+         case TYPE_POINTER: return st_pointer(tt, te->unary.is_const, st_from_ast(tt, te->unary.child));
+         case TYPE_REFERENCE: return st_reference(tt, te->unary.is_const, st_from_ast(tt, te->unary.child));
