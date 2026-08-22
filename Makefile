@@ -1,5 +1,7 @@
+
 # Compiler and flags
 CC       := gcc
+SHELL     := /bin/bash
 CFLAGS   := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
 LDFLAGS  :=
 

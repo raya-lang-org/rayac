@@ -1,1 +1,1 @@
-ok
+return type mismatch: expected 'i32', found 'f64'
