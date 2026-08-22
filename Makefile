@@ -1,14 +1,17 @@
 
 # Compiler and flags
 CC       := gcc
-SHELL     := /bin/bash
+SHELL    := /bin/bash
 CFLAGS   := -Wall -Wextra -Werror -std=c11 -O2 -Isrc
 LDFLAGS  :=
 
 SRCDIR   := src
 OBJDIR   := obj
 BINDIR   := bin
-TESTDIR  := tests
+SRCS     := src/main.c src/lexer.c src/parser.c src/ast.c src/string_view.c \
+       src/type.c src/sema.c src/symbol.c src/diagnostics.c src/arena.c \
+       src/codegen_c.c
+
 
 SOURCES  := $(wildcard $(SRCDIR)/*.c)
 OBJECTS  := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))

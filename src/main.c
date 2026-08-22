@@ -6,6 +6,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "sema.h"
+#include "codegen_c.h"
 
 bool g_dump_tokens = false;
 bool g_dump_ast = false;
@@ -14,6 +15,7 @@ bool g_test_lexer = false;
 bool g_test_parser = false;
 bool g_check = false;
 bool g_test_sema = false;
+bool g_build = false;
 
 static void print_usage(const char* prog) {
     fprintf(stderr, "Raya compiler %s\n", RAYA_VERSION);
@@ -26,6 +28,7 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --test-parser    Output AST kinds only (for tests)\n");
     fprintf(stderr, "  --check          Run semantic analysis\n");
     fprintf(stderr, "  --test-sema      Output sema errors only (for tests)\n");
+    fprintf(stderr, "  --build      vvutput sema errors only (for tests)\n");
     fprintf(stderr, "  -h, --help       Show this help\n");
     fprintf(stderr, "  -v, --version    Show version\n");
 }
@@ -209,6 +212,8 @@ int main(int argc, char** argv) {
             g_check = true;
         } else if (strcmp(argv[i], "--test-sema") == 0) {
             g_test_sema = true;
+        }  else if (strcmp(argv[i], "--build") == 0) {
+            g_build = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -320,6 +325,58 @@ int main(int argc, char** argv) {
         sema_run(sema, ast);
     }
     /* ===== END SEMANTIC ANALYSIS ===== */
+
+    if (g_build) {
+        Sema *sema = sema_new(&arena, &diag);
+        sema_run(sema, ast);
+        if (diag.error_count > 0) {
+            diag_print_all(&diag, source, source_len);
+            diag_print_summary(&diag);
+            int result = 1;
+            for (size_t i = 0; i < diag.count; i++) {
+                free((void*)diag.items[i].message.data);
+            }
+            free(diag.items);
+            free(tokens);
+            arena_free_all(&arena);
+            free(source);
+            return result;
+        }
+
+        char c_path[1024];
+        char bin_path[1024];
+        snprintf(c_path, sizeof(c_path), "%s.c", input_file);
+        snprintf(bin_path, sizeof(bin_path), "%s", input_file);
+        size_t flen = strlen(bin_path);
+        if (flen > 5 && strcmp(bin_path + flen - 5, ".raya") == 0)
+            bin_path[flen - 5] = '\0';
+
+        FILE *out = fopen(c_path, "w");
+        if (!out) {
+            fprintf(stderr, "error: could not write %s\n", c_path);
+            free(tokens);
+            arena_free_all(&arena);
+            free(source);
+            return 1;
+        }
+        codegen_c_emit(ast, out);
+        fclose(out);
+
+        char cmd[2048];
+        char out_dir[1024];
+            snprintf(out_dir, sizeof(out_dir), "%s", input_file);
+            char *last_slash = strrchr(out_dir, '/');
+            if (last_slash) {
+                *last_slash = '\0';
+            } else {
+                out_dir[0] = '.';
+                out_dir[1] = '\0';
+            }
+
+            snprintf(cmd, sizeof(cmd),
+                "cc -O2 -std=c11 -Isrc %s src/raya_rt.c -o %s",
+                c_path, bin_path);
+    }
 
     if (g_test_parser) {
         test_parser(ast, 0);

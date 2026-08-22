@@ -1,0 +1,23 @@
+module main;
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+extend Point {
+    pub fn sum(self: Point) -> i32 {
+        return self.x + self.y;
+    }
+}
+
+fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+fn main() -> i32 {
+    const p = Point{ x: 10, y: 20 };
+    const s = p.sum();
+    const t = add(s, 5);
+    return t;
+}
