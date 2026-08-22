@@ -1,16 +1,17 @@
-Raya
+# Raya
 
     A systems programming language that respects the programmer.
 
 raya
 
 module main;
+```
+  fn main() -> void {
+     const msg: []const u8 = "Hello, Raya";
+     std.io.print(msg);
+ }
 
-fn main() -> void {
-    const msg: []const u8 = "Hello, Raya";
-    std.io.print(msg);
-}
-
+```
 What is Raya?
 Raya is a C-like systems language with modern conveniences. It gives you:
 
@@ -24,7 +25,7 @@ Raya is a C-like systems language with modern conveniences. It gives you:
 Raya does not enforce memory safety through a borrow checker. It trusts the programmer — like C — but provides better tools to avoid the common mistakes.
 Quick Example
 raya
-
+```
 module main;
 
 struct Vec3 {
@@ -44,7 +45,7 @@ fn main() -> void {
     const len = v.length();
     std.io.print_f32(len);
 }
-
+```
 Primitive Data Types
 Raya has no hidden complexity in its type system. Every primitive has a fixed size and predictable layout.
 Integers
@@ -96,7 +97,7 @@ Syntax	Null?	Size	Auto-deref?	Arithmetic?	Deref Safety
 References &T
 Non-null, safe pointers. Used for function parameters and struct fields.
 raya
-
+```
 fn add_one(r: &i32) -> void {
     r.* = r.* + 1;   // auto-deref: same as (*r) = (*r) + 1
 }
@@ -256,7 +257,7 @@ fn process_file(path: []const u8) -> void {
     }
     read_data(f);
 }                                     // close_file(f) runs here too
-
+```
 Building the Compiler
 bash
 
