@@ -1,6 +1,6 @@
 Raya Language Reference
 
-    Version: 0.7.5
+    Version: 0.7.7
     Status: Formal Specification — Path A
     This document defines the complete syntax, type system, and semantics of the Raya language.
 

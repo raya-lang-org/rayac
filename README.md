@@ -4,12 +4,13 @@
 
 raya
 
-module main;
 ```
-  fn main() -> void {
+module main;
+  
+fn main() -> void {
      const msg: []const u8 = "Hello, Raya";
      std.io.print(msg);
- }
+}
 
 ```
 What is Raya?
