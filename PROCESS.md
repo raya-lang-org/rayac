@@ -304,8 +304,28 @@ Date	Version	Change
 2026-08-18	0.5.0	Bootstrap: arena, stringview, diagnostics, source locations.
 Contributors
 
-    Lead: [Your Name]
+    Lead: bryanSilmaroOpriasa
     Language Design & Spec: Team consensus via GitHub discussions
     Compiler Engineering: C11 implementation, arena + hash-consed types
+
+
+| Feature                  | What changed                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Method dispatch**      | Top-level const/var symbol types now update after init checking. Auto-ref (`Point` → `&Point` / `&const Point`) works for receivers and arguments. Method table lookup resolves `p.length()` correctly. |
+| **`Self` check**         | `Self` in a non-method parameter now errors with `"Self outside of method context"`.                                                                                                                    |
+| **`unsafe` enforcement** | Already worked for `unsafe fn`. The test suite confirms `*ptr` inside a plain `fn` errors, and `unsafe fn` allows it.                                                                                   |
+
+
+| File                          | Fixes                                                                                                                                                                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/string_view.h`           | Added `sv_to_int()` — bounded integer parser for non-null-terminated slices                                                                                                                                                                                                       |
+| `src/type.c`                  | Fixed `atoi` buffer over-read. Added literal narrowing (`i64`/`f64` → smaller types). Added auto-deref (`&T`/` *T` → `T`).                                                                                                                                                        |
+| `src/parser.c`                | Optional type in top-level const/var. Optional trailing comma in struct/union/enum. `TOK_SELF` as expression and type. `unsafe fn` at top level. Struct literal only for uppercase identifiers. Error recovery in extend/traits blocks.                                           |
+| `src/sema.c`                  | Method table registration and lookup. Self type resolution. Top-level init checking. Method call arg/receiver validation. Explicit return tracking. `unsafe` context flag. Symbol type updates for top-level consts/vars. Auto-ref for method calls. `Self` outside method check. |
+| `tests/sema/*.expected`       | Regenerated to match actual compiler output                                                                                                                                                                                                                                       |
+| `tests/sema/run_sema_tests.c` | Uses `--test-sema` to match `make test-sema` output format                                                                                                                                                                                                                        |
+| `Makefile`                    | Portable `CC ?= gcc` instead of hardcoded Windows path                                                                                                                                                                                                                            |
+| `.gitignore`                  | Ignores swap files, build artifacts, test outputs                                                                                                                                                                                                                                 |
+
 
 "Ship the frontend. Harden the sema. Then decide how fast you want it to go."

@@ -1,3 +1,1 @@
-cannot call method on type 'void'
-cannot initialize constant 'len' of type 'f32' with 'void'
-cannot call method on type 'void'
+ok

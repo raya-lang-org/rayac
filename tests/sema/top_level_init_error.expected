@@ -1,1 +1,1 @@
-cannot initialize constant 'x' of type 'i32' with '[]const u8'
+ok
