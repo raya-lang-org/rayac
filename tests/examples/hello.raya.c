@@ -5,13 +5,14 @@
 #include <string.h>
 #include "raya_rt.h"
 
-typedef struct { uint8_t const* ptr; size_t len; } raya_Str;
-typedef struct { void* ptr; size_t len; } raya_Slice;
 
-
+void  raya_print(raya_Str s);
 int32_t  main();
 
+void  raya_print(raya_Str s) ;
+
 int32_t  main() {
-    return 42;
+    raya_print((raya_Str){ .ptr = (uint8_t const*)"\"Hello from Raya!\\n\"", .len = 20 });
+    return 0;
 }
 

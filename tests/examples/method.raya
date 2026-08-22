@@ -5,6 +5,9 @@ struct Point {
     y: i32,
 }
 
+
+extern fn raya_print(s: []const u8) -> void;
+
 extend Point {
     pub fn sum(self: Point) -> i32 {
         return self.x + self.y;
@@ -20,4 +23,7 @@ fn main() -> i32 {
     const s = p.sum();
     const t = add(s, 5);
     return t;
+    
+    raya_print("hello method.raya");
+
 }

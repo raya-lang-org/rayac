@@ -5,9 +5,6 @@
 #include <string.h>
 #include "raya_rt.h"
 
-typedef struct { uint8_t const* ptr; size_t len; } raya_Str;
-typedef struct { void* ptr; size_t len; } raya_Slice;
-
 struct raya_Point;
 
 typedef struct raya_Point {
@@ -15,9 +12,12 @@ typedef struct raya_Point {
     int32_t y;
 } raya_Point;
 
+void  raya_print(raya_Str s);
 int32_t  raya_Point_sum(struct raya_Point self);
 int32_t  add(int32_t a, int32_t b);
 int32_t  main();
+
+void  raya_print(raya_Str s) ;
 
 int32_t  raya_Point_sum(struct raya_Point self) {
     return (self.x + self.y);
@@ -32,5 +32,6 @@ int32_t  main() {
     int32_t s = raya_Point_sum(p);
     int32_t t = add(s, 5);
     return t;
+    raya_print((raya_Str){ .ptr = (uint8_t const*)"\"hello method.raya\"", .len = 19 });
 }
 

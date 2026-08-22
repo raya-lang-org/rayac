@@ -12,3 +12,7 @@ void raya_bounds_check(size_t idx, size_t len, const char *file, int line) {
         raya_panic("index out of bounds", file, line);
     }
 }
+
+void raya_print(raya_Str s) {
+    fwrite(s.ptr, 1, s.len, stdout);
+}

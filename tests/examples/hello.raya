@@ -1,7 +1,11 @@
+
+
 module main;
 
-fn main() -> i32 {
-    return 42;
-}
+extern fn raya_print(s: []const u8) -> void;
 
+fn main() -> i32 {
+    raya_print("Hello from Raya!\n");
+    return 0;
+}
 

@@ -935,8 +935,6 @@ static void cg_emit_compilation_unit(CGen *cg, AstNode *unit) {
     fprintf(cg->out, "#include <stdbool.h>\n");
     fprintf(cg->out, "#include <string.h>\n");
     fprintf(cg->out, "#include \"raya_rt.h\"\n\n");
-    fprintf(cg->out, "typedef struct { uint8_t const* ptr; size_t len; } raya_Str;\n");
-    fprintf(cg->out, "typedef struct { void* ptr; size_t len; } raya_Slice;\n\n");
 
     /* Forward declarations of types */
     for (size_t i = 0; i < unit->compilation_unit.decls.count; i++) {
