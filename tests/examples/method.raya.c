@@ -31,7 +31,7 @@ int32_t  main() {
     struct raya_Point p = (struct raya_Point){.x = 10, .y = 20};
     int32_t s = raya_Point_sum(p);
     int32_t t = add(s, 5);
+    raya_print((raya_Str){ .ptr = (uint8_t const*)"\"Method test passed\\n\"", .len = 22 });
     return t;
-    raya_print((raya_Str){ .ptr = (uint8_t const*)"\"hello method.raya\"", .len = 19 });
 }
 
