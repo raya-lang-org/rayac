@@ -14,6 +14,7 @@ static struct { const char* word; TokenKind kind; } keywords[] = {
     {"fn",        TOK_FN},
     {"for",       TOK_FOR},
     {"if",        TOK_IF},
+    {"in",        TOK_IN},
     {"import",    TOK_IMPORT},
     {"match",     TOK_MATCH},
     {"module",    TOK_MODULE},
@@ -31,10 +32,10 @@ static struct { const char* word; TokenKind kind; } keywords[] = {
     {"unsafe",    TOK_UNSAFE},
     {"var",       TOK_VAR},
     {"while",     TOK_WHILE},
-    {"enum",TOK_ENUM}, 
+    {"enum",TOK_ENUM},
     {"as", TOK_AS},
-    {"with", TOK_WITH}, 
-    {"undefined", TOK_UNDEFINED}, 
+    {"with", TOK_WITH},
+    {"undefined", TOK_UNDEFINED},
     {"self", TOK_SELF},
     {"Self",  TOK_CAP_SELF},
 };
@@ -185,9 +186,11 @@ Token lexer_next(Lexer* l) {
             if (base == 16 && is_hex_digit(ch)) { lexer_advance_char(l); }
             else if (base != 16 && is_digit(ch)) { lexer_advance_char(l); }
             else if (ch == '.' && !is_float) {
-                if (base != 10) break;
-                is_float = true;
-                lexer_advance_char(l);
+              if (base != 10) break;
+                    // Don't consume '.' if it's part of '..' (range operator)
+                    if (l->pos + 1 < l->source_len && l->source[l->pos + 1] == '.') break;
+                    is_float = true;
+                    lexer_advance_char(l);
             } else if ((ch == 'e' || ch == 'E') && base == 10) {
                 is_float = true;
                 lexer_advance_char(l);

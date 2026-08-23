@@ -1,0 +1,21 @@
+struct Box { val: i32 }
+extend Box {
+    pub fn set(self: &Box, v: i32) -> void {
+        self.val = v;
+    }
+}
+
+// expect_exit: 11
+fn main() -> i32 {
+    var a = Box{ val: 0 };
+    var b = Box{ val: 0 };
+    {
+        defer a.set(1);
+        {
+            defer b.set(10);
+            a.val = 0;
+            b.val = 0;
+        }
+    }
+    return a.val + b.val;
+}

@@ -166,6 +166,8 @@ static bool infix_binding_power(TokenKind kind, BindingPower *bp)
             bp->left = 90; bp->right = 91; return true;
         case TOK_STAR: case TOK_SLASH: case TOK_PERCENT:
             bp->left = 100; bp->right = 101; return true;
+        case TOK_DOT_DOT:
+            bp->left = 45; bp->right = 46; return true;
         default:
             return false;
     }

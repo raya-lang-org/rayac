@@ -1,0 +1,9 @@
+// expect_exit: 10
+fn main() -> i32 {
+    var sum: i32 = 0;
+    for i: i32 in 0..5 {
+        sum = sum + i;
+    }
+    return sum;
+}
+
