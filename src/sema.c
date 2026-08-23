@@ -216,6 +216,44 @@ static void sema_collect_decls(Sema *s, AstNode *module)
     s->in_collect_decls = false;
 }
 
+static uint64_t sema_eval_const_expr(Sema *s, AstNode *expr) {
+    if (!expr) return 0;
+    switch (expr->kind) {
+        case AST_INT_LITERAL:
+            return (uint64_t)expr->int_literal.value;
+        case AST_BINARY_EXPR: {
+            uint64_t l = sema_eval_const_expr(s, expr->binary_expr.left);
+            uint64_t r = sema_eval_const_expr(s, expr->binary_expr.right);
+            switch (expr->binary_expr.op) {
+                case TOK_PLUS:  return l + r;
+                case TOK_MINUS: return l - r;
+                case TOK_STAR:  return l * r;
+                case TOK_SLASH: return r != 0 ? l / r : 0;
+                case TOK_PERCENT: return r != 0 ? l % r : 0;
+                default:
+                    sema_report(s, expr->loc, "unsupported operator in constant expression");
+                    return 0;
+            }
+        }
+        case AST_UNARY_EXPR:
+            if (expr->unary_expr.op == TOK_MINUS)
+                return (uint64_t)(-(int64_t)sema_eval_const_expr(s, expr->unary_expr.operand));
+            sema_report(s, expr->loc, "unsupported unary operator in constant expression");
+            return 0;
+        case AST_IDENTIFIER: {
+            Symbol *sym = scope_lookup(s->current_scope, expr->identifier.name);
+            if (sym && sym->kind == SYM_CONST && sym->decl && sym->decl->var_decl.init) {
+                return sema_eval_const_expr(s, sym->decl->var_decl.init);
+            }
+            sema_report(s, expr->loc, "'%.*s' is not a compile-time constant", SV_ARG(expr->identifier.name));
+            return 0;
+        }
+        default:
+            sema_report(s, expr->loc, "expression is not compile-time evaluable");
+            return 0;
+    }
+}
+
 /* ========================================================================
  *  Type resolution
  * ======================================================================== */
@@ -291,6 +329,11 @@ SType *sema_resolve_type(Sema *s, TypeExpr *type_expr)
             }
             SType *ret = type_expr->func.ret ? sema_resolve_type(s, type_expr->func.ret) : st_void(s->types);
             return st_function(s->types, params, pc, ret, false);
+        }
+        case TYPE_ARRAY: {
+            uint64_t size = sema_eval_const_expr(s, type_expr->array.length);
+            SType *elem = sema_resolve_type(s, type_expr->array.elem);
+            return st_array(s->types, size, elem);
         }
         default:
             return st_from_ast(s->types, type_expr);
@@ -689,19 +732,19 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
                 if (expr->slice_expr.end) sema_check_expr(s, expr->slice_expr.end);
                 expr->sema_type = st_void(s->types);
                 return expr->sema_type;
-            }
-            case AST_ARRAY_LITERAL: {
-                SType *elem_type = NULL;
-        for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
-            SType *t = sema_check_expr(s, expr->array_literal.elements.items[i]);
-            if (!elem_type) {
-                elem_type = t;
-            } else if (!st_eq(elem_type, t)) {
-                if (st_can_coerce(t, elem_type)) {
-                    /* keep elem_type */
-                } else if (st_can_coerce(elem_type, t)) {
+        }
+        case AST_ARRAY_LITERAL: {
+            SType *elem_type = NULL;
+            for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
+                SType *t = sema_check_expr(s, expr->array_literal.elements.items[i]);
+                if (!elem_type) {
                     elem_type = t;
-                } else {
+                } else if (!st_eq(elem_type, t)) {
+                    if (st_can_coerce(t, elem_type)) {
+                        /* keep elem_type */
+                    } else if (st_can_coerce(elem_type, t)) {
+                        elem_type = t;
+                    } else {
                         sema_report(s, expr->array_literal.elements.items[i]->loc,
                             "array element %zu: expected '%s', found '%s'",
                             i + 1, st_name(elem_type), st_name(t));
@@ -709,26 +752,20 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
                 }
             }
 
-        if (expr->array_literal.explicit_type) {
-            SType *explicit = sema_resolve_type(s, expr->array_literal.explicit_type);
-            if (elem_type && !st_can_coerce(elem_type, explicit)) {
-                sema_report(s, expr->loc, "cannot initialize array of '%s' with '%s'",
-                    st_name(explicit), st_name(elem_type));
+            if (expr->array_literal.explicit_type) {
+                SType *explicit = sema_resolve_type(s, expr->array_literal.explicit_type);
+                if (elem_type && !st_can_coerce(elem_type, explicit)) {
+                    sema_report(s, expr->loc, "cannot initialize array of '%s' with '%s'",
+                        st_name(explicit), st_name(elem_type));
+                }
+                elem_type = explicit;
             }
-            elem_type = explicit;
-        }
 
-        if (!elem_type) elem_type = st_void(s->types);
+            if (!elem_type) elem_type = st_void(s->types);
 
-        if (expr->array_literal.length) {
-            uint64_t size = 0;
-            if (expr->array_literal.length->kind == AST_INT_LITERAL) {
-                size = (uint64_t)expr->array_literal.length->int_literal.value;
-            } else {
-                sema_report(s, expr->array_literal.length->loc,
-                    "array size must be a compile-time constant integer");
-            }
-            expr->sema_type = st_array(s->types, size, elem_type);
+            if (expr->array_literal.length) {
+                uint64_t size = sema_eval_const_expr(s, expr->array_literal.length);
+                expr->sema_type = st_array(s->types, size, elem_type);
             } else {
                 expr->sema_type = st_slice(s->types, false, elem_type);
             }
