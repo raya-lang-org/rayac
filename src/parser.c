@@ -756,9 +756,10 @@ TypeExpr *parser_parse_type(Parser *p)
 
     if (parser_match(p, TOK_QUESTION))
         return type_new_optional(p->arena, primary, parser_current(p)->loc);
-    if (parser_match(p, TOK_BANG))
-        return type_new_error_union(p->arena, primary, parser_current(p)->loc);
-
+    if (parser_match(p, TOK_BANG)) {
+        TypeExpr *success = parser_parse_type(p);
+        return type_new_error_union(p->arena, primary, success, loc);
+    }
     return primary;
 }
 

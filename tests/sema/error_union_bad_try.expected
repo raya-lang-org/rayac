@@ -1,0 +1,1 @@
+'try' can only propagate errors when enclosing function returns an error union

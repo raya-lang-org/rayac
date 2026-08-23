@@ -226,7 +226,7 @@ static void cg_emit_sema_type(CGen *cg, SType *type, const char *name) {
             break;
         }
         case ST_ERROR_UNION: {
-            cg_emit_sema_type(cg, type->as.error_union.base, name);
+            cg_emit_sema_type(cg, type->as.error_union.error, name);
             break;
         }
         case ST_TRAIT:

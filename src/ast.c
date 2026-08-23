@@ -502,9 +502,10 @@ TypeExpr* type_new_optional(Arena* arena, TypeExpr* child, SourceLocation loc) {
     return t;
 }
 
-TypeExpr* type_new_error_union(Arena* arena, TypeExpr* child, SourceLocation loc) {
+TypeExpr* type_new_error_union(Arena* arena, TypeExpr* error, TypeExpr* success,  SourceLocation loc) {
     TypeExpr* t = NEW_TYPE(arena, TYPE_ERROR_UNION, loc);
-    t->unary.child = child;
+    t->error_union.error = error;
+    t->error_union.success = success;
     return t;
 }
 
@@ -727,7 +728,9 @@ static void print_type(TypeExpr* t) {
             break;
         case TYPE_ERROR_UNION:
             printf("(TYPE ! ");
-            print_type(t->unary.child);
+            print_type(t->error_union.error);
+            printf(" ");
+            print_type(t->error_union.success);
             printf(")");
             break;
         case TYPE_FUNCTION:

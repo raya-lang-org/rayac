@@ -56,6 +56,9 @@ static StringView sema_type_name_for_method(Sema *s, SType *t)
 /* ========================================================================
  *  Forward declarations
  * ======================================================================== */
+static bool expr_diverges(Sema *s, AstNode *expr);
+static bool stmt_diverges(Sema *s, AstNode *stmt);
+static bool block_diverges(Sema *s, AstNode *block);
 static void sema_collect_decls(Sema *s, AstNode *module);
 static void sema_resolve_bodies(Sema *s, AstNode *module);
 static void sema_check_fn_body(Sema *s, AstNode *fn);
@@ -106,6 +109,58 @@ void sema_run(Sema *s, AstNode *module)
 /* ========================================================================
  *  Pass 1 — Symbol collection
  * ======================================================================== */
+/* ========================================================================
+ *  Divergence analysis
+ * ======================================================================== */
+static bool block_diverges(Sema *s, AstNode *block) {
+    if (!block || block->kind != AST_BLOCK) return false;
+    for (size_t i = 0; i < block->block.stmts.count; i++) {
+        if (stmt_diverges(s, block->block.stmts.items[i])) return true;
+    }
+    if (block->block.trailing_expr && expr_diverges(s, block->block.trailing_expr))
+        return true;
+    return false;
+}
+
+static bool stmt_diverges(Sema *s, AstNode *stmt) {
+    if (!stmt) return false;
+    switch (stmt->kind) {
+        case AST_RETURN_STMT: return true;
+        case AST_BREAK_STMT: case AST_CONTINUE_STMT: return true;
+        case AST_IF_STMT: {
+            bool then_div = block_diverges(s, stmt->if_stmt.then_block);
+            bool else_div = stmt->if_stmt.else_block
+                ? block_diverges(s, stmt->if_stmt.else_block)
+                : false;
+            return then_div && else_div;
+        }
+        case AST_WHILE_STMT: return false;
+        case AST_MATCH_STMT: {
+            if (stmt->match_stmt.arms.count == 0) return false;
+            for (size_t i = 0; i < stmt->match_stmt.arms.count; i++) {
+                if (!expr_diverges(s, stmt->match_stmt.arms.items[i]->match_arm.expr))
+                    return false;
+            }
+            return true;
+        }
+        case AST_BLOCK: return block_diverges(s, stmt);
+        case AST_EXPR_STMT: return expr_diverges(s, stmt->expr_stmt.expr);
+        default: return false;
+    }
+}
+
+static bool expr_diverges(Sema *s, AstNode *expr) {
+    if (!expr) return false;
+    switch (expr->kind) {
+        case AST_BLOCK: return block_diverges(s, expr);
+        case AST_UNSAFE_BLOCK_EXPR: return block_diverges(s, expr->unsafe_block_expr.body);
+        case AST_CALL_EXPR: {
+            SType *ct = expr->sema_type;
+            return ct && ct->kind == ST_NORETURN;
+        }
+        default: return false;
+    }
+}
 static AstNodeList *sema_get_type_fields(Sema *s, SType *type, AstNode **out_decl)
 {
     if (!type) return NULL;
@@ -320,7 +375,17 @@ SType *sema_resolve_type(Sema *s, TypeExpr *type_expr)
         case TYPE_OPTIONAL:
             return st_optional(s->types, sema_resolve_type(s, type_expr->unary.child));
         case TYPE_ERROR_UNION:
-            return st_error_union(s->types, sema_resolve_type(s, type_expr->unary.child));
+             SType *err = sema_resolve_type(s, type_expr->error_union.error);
+            SType *succ = sema_resolve_type(s, type_expr->error_union.success);
+            if (err->kind != ST_STRUCT && err->kind != ST_UNION && err->kind != ST_ENUM) {
+                sema_report(s, type_expr->error_union.error->loc,
+                    "error type '%s' must be a struct, union, or enum", st_name(err));
+            }
+            if (succ->kind == ST_VOID) {
+                sema_report(s, type_expr->error_union.success->loc,
+                    "error union success type cannot be 'void'; use 'noreturn' if function always fails");
+            }
+            return st_error_union(s->types, succ, err);
         case TYPE_FUNCTION: {
             size_t pc = type_expr->func.params.count;
             SType **params = arena_alloc(s->arena, pc * sizeof(SType*));
@@ -424,9 +489,9 @@ static void sema_check_fn_body(Sema *s, AstNode *fn)
         }
     }
 
-    SType *body_type = sema_check_block(s, fn->fn_decl.body);
     SType *ret = fn->fn_decl.ret_type ? sema_resolve_type(s, fn->fn_decl.ret_type) : st_void(s->types);
-
+    s->current_fn_return_type = ret;
+    SType *body_type = sema_check_block(s, fn->fn_decl.body);
     /* FIX #2: Only check trailing expression if no explicit returns */
     if (!s->current_fn_has_return && !st_eq(ret, body_type) && body_type->kind != ST_NORETURN) {
         if (!st_can_coerce(body_type, ret))
@@ -437,6 +502,8 @@ static void sema_check_fn_body(Sema *s, AstNode *fn)
     s->current_fn = prev_fn;
     s->current_self_type = prev_self;
     s->in_unsafe = prev_unsafe;
+    s->current_fn_return_type = NULL;
+
 }
 
 /* ========================================================================
@@ -477,19 +544,34 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
             return st_void(s->types);
         }
         case AST_RETURN_STMT: {
-            /* FIX #2: Track explicit returns */
             s->current_fn_has_return = true;
             size_t errs_before = s->error_count;
             SType *ret = st_void(s->types);
             if (stmt->return_stmt.value) {
                 ret = sema_check_expr(s, stmt->return_stmt.value);
             }
-            SType *expected = s->current_fn && s->current_fn->fn_decl.ret_type
-                ? sema_resolve_type(s, s->current_fn->fn_decl.ret_type)
-                : st_void(s->types);
-            if (s->error_count == errs_before && !st_can_coerce(ret, expected)) {
-                sema_report(s, stmt->loc, "return type mismatch: expected '%s', found '%s'",
-                    st_name(expected), st_name(ret));
+            SType *expected = s->current_fn_return_type ? s->current_fn_return_type : st_void(s->types);
+            if (s->error_count == errs_before) {
+                if (expected->kind == ST_ERROR_UNION) {
+                    SType *E = expected->as.error_union.error;
+                    SType *S = expected->as.error_union.success;
+                    if (ret->kind == ST_ERROR_UNION && st_eq(ret, expected)) {
+                        stmt->return_stmt.is_error_return = true;
+                    } else if (st_can_coerce(ret, E)) {
+                        stmt->return_stmt.is_error_return = true;
+                    } else if (st_can_coerce(ret, S)) {
+                        stmt->return_stmt.is_error_return = false;
+                    } else {
+                        sema_report(s, stmt->loc,
+                            "cannot return '%s' from function returning '%s'",
+                            st_name(ret), st_name(expected));
+                    }
+                } else {
+                    if (!st_can_coerce(ret, expected)) {
+                        sema_report(s, stmt->loc, "return type mismatch: expected '%s', found '%s'",
+                            st_name(expected), st_name(ret));
+                    }
+                }
             }
             return st_void(s->types);
         }
@@ -526,9 +608,14 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
             sema_check_expr(s, stmt->defer_stmt.expr);
             return st_void(s->types);
         case AST_ERRDEFER_STMT:
+        case AST_BREAK_STMT:
+            if (!s->current_fn_return_type || s->current_fn_return_type->kind != ST_ERROR_UNION) {
+                sema_report(s, stmt->loc,
+                    "'errdefer' only valid in functions returning error unions");
+            }
             sema_check_block(s, stmt->errdefer_stmt.body);
             return st_void(s->types);
-        case AST_BREAK_STMT: case AST_CONTINUE_STMT: return st_void(s->types);
+        case AST_CONTINUE_STMT: return st_void(s->types);
         case AST_MATCH_STMT:
             sema_check_expr(s, stmt->match_stmt.expr);
             return st_void(s->types);
@@ -675,13 +762,27 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
             return t;
         }
         case AST_TRY_EXPR: {
-            SType *inner = sema_check_expr(s, expr->try_expr.expr);
+          SType *inner = sema_check_expr(s, expr->try_expr.expr);
             if (inner->kind != ST_ERROR_UNION) {
-                sema_report(s, expr->loc, "try requires error union type, got '%s'", st_name(inner));
+                sema_report(s, expr->loc,
+                    "'try' requires error union type, got '%s'", st_name(inner));
                 expr->sema_type = inner;
                 return inner;
             }
-            expr->sema_type = inner->as.error_union.base;
+            if (!s->current_fn_return_type ||
+                s->current_fn_return_type->kind != ST_ERROR_UNION) {
+                sema_report(s, expr->loc,
+                    "'try' can only propagate errors when enclosing function returns an error union");
+            } else {
+                SType *fn_err = s->current_fn_return_type->as.error_union.error;
+                SType *inner_err = inner->as.error_union.error;
+                if (!st_can_coerce(inner_err, fn_err)) {
+                    sema_report(s, expr->loc,
+                        "cannot propagate error '%s' into function returning '%s'",
+                        st_name(inner_err), st_name(s->current_fn_return_type));
+                }
+            }
+            expr->sema_type = inner->as.error_union.success;
             return expr->sema_type;
         }
         case AST_UNSAFE_BLOCK_EXPR: {
@@ -894,6 +995,42 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
         case AST_MATCH_ARM:
             expr->sema_type = sema_check_expr(s, expr->match_arm.expr);
             return expr->sema_type;
+        case AST_ERROR_CAPTURE_EXPR: {
+            AstNode *try_node = expr->error_capture_expr.expr;
+            if (try_node->kind != AST_TRY_EXPR) {
+                sema_report(s, expr->loc, "internal error: try else without try expression");
+                expr->sema_type = st_void(s->types);
+                return expr->sema_type;
+            }
+            SType *inner = sema_check_expr(s, try_node->try_expr.expr);
+            if (inner->kind != ST_ERROR_UNION) {
+                sema_report(s, expr->loc,
+                    "'try else' requires error union type, got '%s'", st_name(inner));
+                expr->sema_type = inner;
+                return inner;
+            }
+
+            SType *succ = inner->as.error_union.success;
+            SType *err  = inner->as.error_union.error;
+            Scope *fb_scope = scope_new(s->arena, s->current_scope, expr);
+            Scope *prev = s->current_scope;
+            s->current_scope = fb_scope;
+            Symbol *err_sym = symbol_new(s->arena, SYM_VAR,
+                expr->error_capture_expr.err_name, err, expr);
+            scope_insert(s->arena, fb_scope, err_sym);
+            SType *fb_type = sema_check_block(s, expr->error_capture_expr.fallback);
+            s->current_scope = prev;
+            bool diverges = block_diverges(s, expr->error_capture_expr.fallback);
+            if (!diverges) {
+                if (!st_can_coerce(fb_type, succ)) {
+                    sema_report(s, expr->loc,
+                        "'try else' fallback produces '%s', expected '%s' or diverging block",
+                        st_name(fb_type), st_name(succ));
+                }
+            }
+            expr->sema_type = succ;
+            return succ;
+        }
         default:
             expr->sema_type = st_void(s->types);
             return expr->sema_type;

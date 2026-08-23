@@ -37,6 +37,7 @@ struct Sema {
     bool current_fn_has_return;
     bool in_collect_decls;
     MethodTable method_table;   // ← was MethodEntry, now MethodTable
+    SType *current_fn_return_type;
 };
 
 Sema *sema_new(Arena *arena, DiagnosticEngine *diag);

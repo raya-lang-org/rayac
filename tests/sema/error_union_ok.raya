@@ -1,0 +1,13 @@
+struct MyError { code: i32 }
+
+fn may_fail(x: i32) -> MyError!i32 {
+    if (x < 0) {
+        return MyError{ code: 1 };
+    }
+    return x * 2;
+}
+
+fn main() -> MyError!i32 {
+    const a = try may_fail(5);
+    return a;
+}

@@ -137,6 +137,10 @@ struct TypeExpr {
             bool is_const;
         } unary;
         struct {
+            TypeExpr *error;
+            TypeExpr *success;
+        } error_union;
+        struct {
             AstNode* length;
             TypeExpr* elem;
         } array;
@@ -277,7 +281,7 @@ struct AstNode {
             AstNode* trailing_expr;
         } block;
         struct { AstNode* expr; } expr_stmt;
-        struct { AstNode* value; } return_stmt;
+        struct { AstNode* value; bool is_error_return; } return_stmt;
         struct {
             AstNode* condition;
             AstNode* then_block;
@@ -466,7 +470,7 @@ TypeExpr* type_new_pointer(Arena* arena, TypeExpr* child, bool is_const, SourceL
 TypeExpr* type_new_slice(Arena* arena, TypeExpr* child, bool is_const, SourceLocation loc);
 TypeExpr* type_new_array(Arena* arena, AstNode* length, TypeExpr* elem, SourceLocation loc);
 TypeExpr* type_new_optional(Arena* arena, TypeExpr* child, SourceLocation loc);
-TypeExpr* type_new_error_union(Arena* arena, TypeExpr* child, SourceLocation loc);
+TypeExpr* type_new_error_union(Arena* arena, TypeExpr* error, TypeExpr* success, SourceLocation loc);
 TypeExpr* type_new_function(Arena* arena, SourceLocation loc);
 void type_add_generic_arg(Arena* arena, TypeExpr* type, TypeExpr* arg);
 void type_func_add_param(Arena* arena, TypeExpr* func, TypeExpr* param);

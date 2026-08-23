@@ -30,8 +30,12 @@ static uint32_t hash_type_shape(SType *t) {
             h = (h ^ (uint32_t)(uint64_t)t->as.array.size) * 16777619;
             h = (h ^ (uint32_t)(uintptr_t)t->as.array.base) * 16777619;
             break;
-        case ST_OPTIONAL: case ST_ERROR_UNION:
+        case ST_OPTIONAL:
             h = (h ^ (uint32_t)(uintptr_t)t->as.optional.base) * 16777619;
+            break;
+        case ST_ERROR_UNION:
+            h = (h ^ (uint32_t)(uintptr_t)t->as.error_union.error) * 16777619;
+            h = (h ^ (uint32_t)(uintptr_t)t->as.error_union.success) * 16777619;
             break;
         case ST_FUNCTION:
             h = (h ^ (uint32_t)t->as.function.param_count) * 16777619;
@@ -64,7 +68,10 @@ static bool type_shape_eq(SType *a, SType *b) {
         case ST_POINTER: case ST_REFERENCE: case ST_SLICE:
             return a->as.pointer.is_const == b->as.pointer.is_const && a->as.pointer.base == b->as.pointer.base;
         case ST_ARRAY: return a->as.array.size == b->as.array.size && a->as.array.base == b->as.array.base;
-        case ST_OPTIONAL: case ST_ERROR_UNION: return a->as.optional.base == b->as.optional.base;
+        case ST_OPTIONAL: return a->as.optional.base == b->as.optional.base;
+        case ST_ERROR_UNION:
+             return a->as.error_union.error == b->as.error_union.error &&
+                   a->as.error_union.success == b->as.error_union.success;
         case ST_FUNCTION:
             if (a->as.function.param_count != b->as.function.param_count) return false;
             if (a->as.function.is_variadic != b->as.function.is_variadic) return false;
@@ -136,9 +143,9 @@ SType *st_optional(TypeTable *tt, SType *base) {
     SType *p = arena_alloc(tt->arena, sizeof(SType)); memcpy(p, &t, sizeof(t)); return intern_type(tt, p);
 }
 
-SType *st_error_union(TypeTable *tt, SType *base) {
-    SType t = {.kind = ST_ERROR_UNION, .as.error_union = {.base = base}};
-    SType *p = arena_alloc(tt->arena, sizeof(SType)); memcpy(p, &t, sizeof(t)); return intern_type(tt, p);
+SType *st_error_union(TypeTable *tt, SType *success, SType *error) {
+  SType t = {.kind = ST_ERROR_UNION, .as.error_union = {.success = success, .error = error}};
+  SType *p = arena_alloc(tt->arena, sizeof(SType)); memcpy(p, &t, sizeof(t)); return intern_type(tt, p);
 }
 
 SType *st_function(TypeTable *tt, SType **params, size_t pc, SType *ret, bool variadic) {
@@ -174,6 +181,11 @@ bool st_can_coerce(SType *from, SType *to) {
     if (from->kind == ST_REFERENCE && st_eq(from->as.reference.base, to)) return true;
     if (from->kind == ST_POINTER && st_eq(from->as.pointer.base, to)) return true;
     if (to->kind == ST_REFERENCE && st_eq(from, to->as.reference.base)) return true;
+    if (to->kind == ST_ERROR_UNION) {
+        if (from->kind == ST_ERROR_UNION && st_eq(from, to)) return true;
+        if (st_can_coerce(from, to->as.error_union.success)) return true;
+        if (st_can_coerce(from, to->as.error_union.error)) return true;
+    }
     return false;
 }
 
@@ -192,7 +204,7 @@ const char *st_name(SType *t) {
         case ST_SLICE: snprintf(buf, 256, "[]%s%s", t->as.slice.is_const ? "const " : "", st_name(t->as.slice.base)); return buf;
         case ST_ARRAY: snprintf(buf, 256, "[%llu]%s", (unsigned long long)t->as.array.size, st_name(t->as.array.base)); return buf;
         case ST_OPTIONAL: snprintf(buf, 256, "?%s", st_name(t->as.optional.base)); return buf;
-        case ST_ERROR_UNION: snprintf(buf, 256, "!%s", st_name(t->as.error_union.base)); return buf;
+        case ST_ERROR_UNION: snprintf(buf, 256, "%s!%s", st_name(t->as.error_union.error), st_name(t->as.error_union.success)); return buf;
         case ST_FUNCTION: snprintf(buf, 256, "fn(...) -> %s", st_name(t->as.function.ret)); return buf;
         case ST_STRUCT: case ST_UNION: case ST_ENUM: case ST_TRAIT:
             if (t->as.struct_.name.data) { snprintf(buf, 256, "%.*s", (int)t->as.struct_.name.len, t->as.struct_.name.data); return buf; }
@@ -231,7 +243,7 @@ SType *st_from_ast(TypeTable *tt, TypeExpr *te) {
             return st_array(tt, sz, st_from_ast(tt, te->array.elem));
         }
         case TYPE_OPTIONAL: return st_optional(tt, st_from_ast(tt, te->unary.child));
-        case TYPE_ERROR_UNION: return st_error_union(tt, st_from_ast(tt, te->unary.child));
+        case TYPE_ERROR_UNION: return st_error_union(tt, st_from_ast(tt, te->error_union.success), st_from_ast(tt, te->error_union.error));
         case TYPE_FUNCTION: {
             size_t pc = te->func.params.count;
             SType **ps = arena_alloc(tt->arena, pc * sizeof(SType*));

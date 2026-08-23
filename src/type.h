@@ -37,7 +37,7 @@ struct SType {
         struct { bool is_const; SType *base; } slice;
         struct { uint64_t size; SType *base; } array;
         struct { SType *base; } optional;
-        struct { SType *base; } error_union;
+        struct { SType *success; SType *error; } error_union;
         struct {
             SType **params;
             size_t param_count;
@@ -88,7 +88,7 @@ SType *st_reference(TypeTable *tt, bool is_const, SType *base);
 SType *st_slice(TypeTable *tt, bool is_const, SType *base);
 SType *st_array(TypeTable *tt, uint64_t size, SType *base);
 SType *st_optional(TypeTable *tt, SType *base);
-SType *st_error_union(TypeTable *tt, SType *base);
+SType *st_error_union(TypeTable *tt, SType *success, SType *error);
 SType *st_function(TypeTable *tt, SType **params, size_t pc, SType *ret, bool variadic);
 
 SType *st_from_ast(TypeTable *tt, TypeExpr *type_expr);
