@@ -1,0 +1,6 @@
+// expect_exit: 99
+struct Point { x: i32, y: i32 }
+fn main() -> i32 {
+    const p = Point{ x: 99, y: 42 };
+    return p.x;
+}

@@ -1,0 +1,11 @@
+// expect_exit: 5
+struct Vec2 { x: i32, y: i32 }
+extend Vec2 {
+    pub fn sum(self: &Vec2) -> i32 {
+        return self.x + self.y;
+    }
+}
+fn main() -> i32 {
+    const v = Vec2{ x: 2, y: 3 };
+    return v.sum();
+}
