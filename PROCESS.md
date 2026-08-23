@@ -1,8 +1,8 @@
 # Raya Compiler — Development Process
 
-    Version: 0.7.7
-    Last Updated: 2026-08-22
-    Status: Phase 3 Complete → Phase 4 In Progress
+    Version: 0.8.0
+    Last Updated: 2026-08-23
+    Status: Phase 3 Complete → Phase 4 In Progress (Error Unions Landed)
 
 ## Table of Contents
 
@@ -122,6 +122,7 @@ Repository: https://github.com/raya-lang-org/rayac
 | Sema — Trait Conformance | ⏳ Pending | Not yet implemented |
 | Sema — Generics | ⏳ Pending | Parsed but not sema'd |
 | Sema — unsafe Enforcement | ✅ Complete | `in_unsafe` flag, raw deref checked |
+| Sema — Error Unions | ✅ Complete | `E!S` syntax, `try`/`try else`/`errdefer`, auto-wrap on return |
 | Sema — Defer/Errdefer | ⏳ Pending | Collected but not lowered |
 | Sema — Comptime | ⏳ Pending | Spec'd but not built |
 | Backend | ❌ Not Started | Decision pending |
@@ -217,13 +218,17 @@ Repository: https://github.com/raya-lang-org/rayac
 - [ ] Generic constraint checking (`T: type with Copyable`)
 - [ ] Hook into `sema_check_expr` for generic function calls and struct literals
 
-#### Sprint 5: Defer & Errdefer (Week 5)
+#### Sprint 5: Error Unions & Defer (Week 5) — ✅ COMPLETE
 
-- [ ] Collect defers per block during sema
-- [ ] Validate defer expressions don't reference dying locals
-- [ ] Design defer lowering strategy (AST transform vs codegen insertion)
-- [ ] errdefer control-flow analysis: only execute on error return paths
-
+- [x] `E!S` syntax: binary `!` in type expressions, parser + AST support
+- [x] Error union type resolution with hash-consed `SType`
+- [x] Error type restricted to struct/union/enum
+- [x] Auto-wrap on return: success branch, error branch, pass-through
+- [x] `try` propagation with enclosing function validation
+- [x] `try else |e|` capture with divergence analysis
+- [x] `errdefer` sema validation (lowering blocked on backend)
+- [x] Coercion: `T -&gt; E!T`, `E -&gt; E!T`, `E!T -&gt; E!T` identity
+- [x] 3 new sema tests, 30 total passing
 ---
 
 ## 6. Phase 5+ Roadmap
@@ -372,16 +377,9 @@ tests/
 
 ## Changelog
 
-| Date | Version | Change |
-|------|---------|--------|
-| **2026-08-22** | **0.7.7** | **Sema hardening complete. Method dispatch, unsafe enforcement, Self resolution, top-level init checking, literal narrowing, auto-deref. 28 sema tests passing. Critical bugs fixed (atoi over-read, unknown type placeholders, infinite parser loops).** |
-| 2026-08-21 | 0.7.6 | Phase 3 complete. Sema two-pass design, struct literal + field access working. Process document created. |
-| 2026-08-21 | 0.7.5 | Formal spec v0.7.5: EBNF grammar, typed builder API, comptime VM bytecode, fat-pointer ABI. |
-| 2026-08-20 | 0.7.0 | Parser complete. Pratt expressions, all declarations, patterns, attributes. |
-| 2026-08-19 | 0.6.0 | Lexer complete. All keywords, literals, operators, nested comments. |
-| 2026-08-18 | 0.5.0 | Bootstrap: arena, stringview, diagnostics, source locations. |
-
 ## Contributors
+    | **2026-08-23** | **0.8.0** | **Error unions landed. `E!S` syntax with explicit struct error types. `try` propagation, `try else |e|` capture, `errdefer` validation. Return auto-wrap (success/error/pass-through). 30 sema tests passing.** |
+| **2026-08-22** | **0.7.7** | **Sema hardening complete. Method dispatch, unsafe enforcement, Self resolution, top-level init checking, literal narrowing, auto-deref. 28 sema tests passing. Critical bugs fixed (atoi over-read, unknown type placeholders, infinite parser loops).** |
 
 - Lead: bryanSilmaroOpriasa
 - Language Design & Spec: Team consensus via GitHub discussions

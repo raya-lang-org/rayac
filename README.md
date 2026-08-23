@@ -6,7 +6,7 @@ raya
 
 ```
 module main;
-  
+
 fn main() -> void {
      const msg: []const u8 = "Hello, Raya";
      std.io.print(msg);
@@ -97,8 +97,12 @@ Syntax	Null?	Size	Auto-deref?	Arithmetic?	Deref Safety
 ?*T	Yes	sizeof(usize)	No	Yes (scaled)	unsafe required
 References &T
 Non-null, safe pointers. Used for function parameters and struct fields.
-raya
+E!S	No	sizeof(E) + sizeof(S) + align	No	No	Error union (tagged)
+
+
 ```
+raya
+
 fn add_one(r: &i32) -> void {
     r.* = r.* + 1;   // auto-deref: same as (*r) = (*r) + 1
 }
@@ -231,20 +235,30 @@ extend Player {
 }
 
 Error Handling
+
+Error Handling
 raya
 
-fn might_fail() -> !i32 {
-    if something_wrong {
-        return error.BadInput;
+struct FileError { code: i32, msg: []const u8 }
+
+fn read_file(path: []const u8) -> FileError![]u8 {
+    if (path.len == 0) {
+        return FileError{ code: 1, msg: "empty path" };
     }
-    return 42;
+    return buffer;
 }
 
-const x = try might_fail();           // propagates error upward
-const y = might_fail() else |err| {   // capture error
-    std.io.print("failed!");
-    return;
+const data = try read_file("config.txt");     // propagate error upward
+const data2 = try read_file("other.txt") else |e| {  // capture error
+    std.io.print(e.msg);
+    return e;
 };
+
+fn caller() -> FileError!void {
+    const f = open_file("tmp.txt");
+    errdefer close_file(f);               // runs only on error return
+    const data = try read_file("tmp.txt");
+}
 
 Defer
 raya
