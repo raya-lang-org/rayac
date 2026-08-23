@@ -170,9 +170,10 @@ bool st_can_coerce(SType *from, SType *to) {
     if (from->kind == ST_INT && to->kind == ST_FLOAT) return true;
     if (to->kind == ST_OPTIONAL && st_can_coerce(from, to->as.optional.base)) return true;
     if (from->kind == ST_REFERENCE && to->kind == ST_REFERENCE)
-        return !from->as.reference.is_const && to->as.reference.is_const && st_eq(from->as.reference.base, to->as.reference.base); 
+        return !from->as.reference.is_const && to->as.reference.is_const && st_eq(from->as.reference.base, to->as.reference.base);
     if (from->kind == ST_REFERENCE && st_eq(from->as.reference.base, to)) return true;
     if (from->kind == ST_POINTER && st_eq(from->as.pointer.base, to)) return true;
+    if (to->kind == ST_REFERENCE && st_eq(from, to->as.reference.base)) return true;
     return false;
 }
 

@@ -80,7 +80,7 @@ Sema *sema_new(Arena *arena, DiagnosticEngine *diag)
     s->current_fn_has_return = false;
     s->in_collect_decls = false;
     memset(&s->method_table, 0, sizeof(s->method_table));
-    
+
 
     return s;
 }
@@ -320,6 +320,10 @@ static void sema_resolve_bodies(Sema *s, AstNode *module)
                             d->kind == AST_CONST_DECL ? "constant" : "variable",
                             SV_ARG(d->var_decl.name), st_name(decl_type), st_name(init_type));
                     }
+                }
+                Symbol *sym = scope_lookup(s->module_scope, d->var_decl.name);
+                if (sym && ! sym->type) {
+                    sym->type = d->var_decl.type ? sema_resolve_type(s, d->var_decl.type) : init_type;
                 }
             }
         }
@@ -581,9 +585,9 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
                         expr->sema_type = o->as.pointer.base;
                     } else if (o->kind == ST_REFERENCE) {
                         expr->sema_type = o->as.reference.base;
-                    } else { 
-                        sema_report(s, expr->loc, "cannot dereference non-pointer type"); 
-                        expr->sema_type = st_void(s->types); 
+                    } else {
+                        sema_report(s, expr->loc, "cannot dereference non-pointer type");
+                        expr->sema_type = st_void(s->types);
                     }
                     break;
                 case TOK_AMPERSAND:
@@ -597,10 +601,10 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
         }
         case AST_CALL_EXPR: {
             SType *c = sema_check_expr(s, expr->call_expr.callee);
-            if (c->kind != ST_FUNCTION) { 
-                sema_report(s, expr->loc, "called object is not a function"); 
-                expr->sema_type = st_void(s->types); 
-                return expr->sema_type; 
+            if (c->kind != ST_FUNCTION) {
+                sema_report(s, expr->loc, "called object is not a function");
+                expr->sema_type = st_void(s->types);
+                return expr->sema_type;
             }
             /* FIX #6: Check argument count and types */
             size_t expected = c->as.function.param_count;
@@ -629,10 +633,10 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
         }
         case AST_TRY_EXPR: {
             SType *inner = sema_check_expr(s, expr->try_expr.expr);
-            if (inner->kind != ST_ERROR_UNION) { 
-                sema_report(s, expr->loc, "try requires error union type, got '%s'", st_name(inner)); 
-                expr->sema_type = inner; 
-                return inner; 
+            if (inner->kind != ST_ERROR_UNION) {
+                sema_report(s, expr->loc, "try requires error union type, got '%s'", st_name(inner));
+                expr->sema_type = inner;
+                return inner;
             }
             expr->sema_type = inner->as.error_union.base;
             return expr->sema_type;

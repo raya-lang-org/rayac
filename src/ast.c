@@ -1,4 +1,3 @@
-
 #include "ast.h"
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +25,8 @@ void ast_node_list_push(Arena* arena, AstNodeList* list, AstNode* node) {
     }
     list->items[list->count++] = node;
 }
+
+
 
 void type_expr_list_init(Arena* arena, TypeExprList* list) {
     (void)arena;
@@ -620,8 +621,13 @@ void ast_extend_add_generic(Arena* arena, AstNode* extend, AstNode* param) {
     ast_node_list_push(arena, &extend->extend_decl.generic_params, param);
 }
 
+
 void ast_call_add_arg(Arena* arena, AstNode* call, AstNode* arg) {
-    ast_node_list_push(arena, &call->call_expr.args, arg);
+    if (call->kind == AST_METHOD_CALL_EXPR) {
+        ast_node_list_push(arena, &call->method_call_expr.args, arg);
+    } else {
+        ast_node_list_push(arena, &call->call_expr.args, arg);
+    }
 }
 
 void ast_array_add_elem(Arena* arena, AstNode* arr, AstNode* elem) {
