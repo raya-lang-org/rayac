@@ -684,15 +684,54 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
             return expr->sema_type;
         }
         case AST_SLICE_EXPR: {
-            sema_check_expr(s, expr->slice_expr.object);
-            if (expr->slice_expr.start) sema_check_expr(s, expr->slice_expr.start);
-            if (expr->slice_expr.end) sema_check_expr(s, expr->slice_expr.end);
-            expr->sema_type = st_void(s->types);
-            return expr->sema_type;
+                sema_check_expr(s, expr->slice_expr.object);
+                if (expr->slice_expr.start) sema_check_expr(s, expr->slice_expr.start);
+                if (expr->slice_expr.end) sema_check_expr(s, expr->slice_expr.end);
+                expr->sema_type = st_void(s->types);
+                return expr->sema_type;
+            }
+            case AST_ARRAY_LITERAL: {
+                SType *elem_type = NULL;
+        for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
+            SType *t = sema_check_expr(s, expr->array_literal.elements.items[i]);
+            if (!elem_type) {
+                elem_type = t;
+            } else if (!st_eq(elem_type, t)) {
+                if (st_can_coerce(t, elem_type)) {
+                    /* keep elem_type */
+                } else if (st_can_coerce(elem_type, t)) {
+                    elem_type = t;
+                } else {
+                        sema_report(s, expr->array_literal.elements.items[i]->loc,
+                            "array element %zu: expected '%s', found '%s'",
+                            i + 1, st_name(elem_type), st_name(t));
+                    }
+                }
+            }
+
+        if (expr->array_literal.explicit_type) {
+            SType *explicit = sema_resolve_type(s, expr->array_literal.explicit_type);
+            if (elem_type && !st_can_coerce(elem_type, explicit)) {
+                sema_report(s, expr->loc, "cannot initialize array of '%s' with '%s'",
+                    st_name(explicit), st_name(elem_type));
+            }
+            elem_type = explicit;
         }
-        case AST_ARRAY_LITERAL: {
-            for (size_t i = 0; i < expr->array_literal.elements.count; i++) sema_check_expr(s, expr->array_literal.elements.items[i]);
-            expr->sema_type = st_void(s->types);
+
+        if (!elem_type) elem_type = st_void(s->types);
+
+        if (expr->array_literal.length) {
+            uint64_t size = 0;
+            if (expr->array_literal.length->kind == AST_INT_LITERAL) {
+                size = (uint64_t)expr->array_literal.length->int_literal.value;
+            } else {
+                sema_report(s, expr->array_literal.length->loc,
+                    "array size must be a compile-time constant integer");
+            }
+            expr->sema_type = st_array(s->types, size, elem_type);
+            } else {
+                expr->sema_type = st_slice(s->types, false, elem_type);
+            }
             return expr->sema_type;
         }
         case AST_STRUCT_LITERAL: {

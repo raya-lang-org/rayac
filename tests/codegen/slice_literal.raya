@@ -1,0 +1,5 @@
+// expect_exit: 6
+fn main() -> i32 {
+    const arr = []i32{1, 2, 3};
+    return arr[0] + arr[1] + arr[2];
+}

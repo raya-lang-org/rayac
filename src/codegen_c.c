@@ -764,13 +764,26 @@ static void cg_emit_expr(CGen *cg, AstNode *expr) {
             break;
         }
         case AST_ARRAY_LITERAL: {
-            fprintf(cg->out, "{");
-            for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
-                if (i > 0) fprintf(cg->out, ", ");
-                cg_emit_expr(cg, expr->array_literal.elements.items[i]);
+        SType *st = expr->sema_type;
+            if (st && st->kind == ST_SLICE) {
+                fprintf(cg->out, "(raya_Slice){ .ptr = (void*)(");
+                cg_emit_sema_type(cg, st->as.slice.base, "");
+                fprintf(cg->out, "[]){");
+                for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
+                    if (i > 0) fprintf(cg->out, ", ");
+                    cg_emit_expr(cg, expr->array_literal.elements.items[i]);
+                }
+                fprintf(cg->out, "}, .len = %zu }", expr->array_literal.elements.count);
+            } else {
+                fprintf(cg->out, "{");
+                for (size_t i = 0; i < expr->array_literal.elements.count; i++) {
+                    if (i > 0) fprintf(cg->out, ", ");
+                    cg_emit_expr(cg, expr->array_literal.elements.items[i]);
+                }
+                fprintf(cg->out, "}");
             }
-            fprintf(cg->out, "}");
             break;
+
         }
         case AST_STRUCT_LITERAL: {
             StringView type_name = cg_typeexpr_name(expr->struct_literal.type);
