@@ -694,6 +694,19 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
         }
         case AST_FIELD_ACCESS_EXPR: {
             SType *base = sema_check_expr(s, expr->field_access_expr.object);
+             StringView fname = expr->field_access_expr.field_name;
+
+            /* Check for slice builtin fields */
+            if (base->kind == ST_SLICE) {
+                if (sv_eq_cstr(fname, "ptr")) {
+                    expr->sema_type = st_pointer(s->types, false, base->as.slice.base);
+                    return expr->sema_type;
+                }
+                if (sv_eq_cstr(fname, "len")) {
+                    expr->sema_type = st_int(s->types, false, 64); // usize
+                    return expr->sema_type;
+                }
+            }
             SType *struct_type = base;
             if (base->kind == ST_POINTER) struct_type = base->as.pointer.base;
             if (base->kind == ST_REFERENCE) struct_type = base->as.reference.base;
@@ -706,7 +719,6 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
                 return expr->sema_type;
             }
 
-            StringView fname = expr->field_access_expr.field_name;
             for (size_t i = 0; i < fields->count; i++) {
                 AstNode *f = fields->items[i];
                 if (sv_eq(f->field_decl.name, fname)) {

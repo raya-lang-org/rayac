@@ -1,0 +1,13 @@
+// expect_exit: 15
+fn sum(data: []i32) -> i32 {
+    var total: i32 = 0;
+    for i: i32 in 0..data.len {
+        total = total + data[i];
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    const arr = []i32{1, 2, 3, 4, 5};
+    return sum(arr);
+}

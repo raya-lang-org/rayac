@@ -685,7 +685,18 @@ static void cg_emit_expr(CGen *cg, AstNode *expr) {
             break;
         }
         case AST_FIELD_ACCESS_EXPR: {
+                SType *base_type = expr->field_access_expr.object->sema_type;
+                if (base_type && base_type->kind == ST_SLICE) {
+                    cg_emit_expr(cg, expr->field_access_expr.object);
+                    if (sv_eq_cstr(expr->field_access_expr.field_name, "ptr")) {
+                        fprintf(cg->out, ".ptr");
+                    } else if (sv_eq_cstr(expr->field_access_expr.field_name, "len")) {
+                        fprintf(cg->out, ".len");
+                    }
+                    break;
+                }
             cg_emit_expr(cg, expr->field_access_expr.object);
+
             if (cg_is_pointer_type(expr->field_access_expr.object)) {
                 fprintf(cg->out, "->%.*s", (int)expr->field_access_expr.field_name.len,
                     expr->field_access_expr.field_name.data);
