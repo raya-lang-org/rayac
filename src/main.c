@@ -7,6 +7,7 @@
 #include "parser.h"
 #include "sema.h"
 #include "codegen_c.h"
+#include "raya_rt.h"
 
 bool g_dump_tokens = false;
 bool g_dump_ast = false;

@@ -1,12 +1,12 @@
-struct Counter { val: i32 }
+struct Counter { val: i64 }
 extend Counter {
-    pub fn set(self: &Counter, v: i32) -> void {
+    pub fn set(self: &Counter, v: i64) -> void {
         self.val = v;
     }
 }
 
 // expect_exit: 42
-fn main() -> i32 {
+fn main() -> i64 {
     var c = Counter{ val: 0 };
     {
         defer c.set(42);

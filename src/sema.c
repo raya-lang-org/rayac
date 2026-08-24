@@ -126,7 +126,7 @@ static bool stmt_diverges(Sema *s, AstNode *stmt) {
     if (!stmt) return false;
     switch (stmt->kind) {
         case AST_RETURN_STMT: return true;
-        case AST_BREAK_STMT: case AST_CONTINUE_STMT: return true;
+        case AST_BREAK_STMT:case AST_CONTINUE_STMT: return true;
         case AST_IF_STMT: {
             bool then_div = block_diverges(s, stmt->if_stmt.then_block);
             bool else_div = stmt->if_stmt.else_block
@@ -618,11 +618,6 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
             return st_void(s->types);
         }
         case AST_BREAK_STMT:
-            if (!s->current_fn_return_type || s->current_fn_return_type->kind != ST_ERROR_UNION) {
-                sema_report(s, stmt->loc,
-                    "'errdefer' only valid in functions returning error unions");
-            }
-            sema_check_block(s, stmt->errdefer_stmt.body);
             return st_void(s->types);
         case AST_CONTINUE_STMT: return st_void(s->types);
         case AST_MATCH_STMT:

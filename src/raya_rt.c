@@ -9,7 +9,9 @@ void raya_panic(const char *msg, const char *file, int line) {
 
 void raya_bounds_check(size_t idx, size_t len, const char *file, int line) {
     if (idx >= len) {
-        raya_panic("index out of bounds", file, line);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "index out of bounds: %zu >= %zu", idx, len);
+        raya_panic(buf, file, line);
     }
 }
 

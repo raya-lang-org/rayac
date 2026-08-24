@@ -1,6 +1,6 @@
 // expect_exit: 7
-fn main() -> i32 {
-    const a: i32 = 10;
-    const b: i32 = 3;
+fn main() -> i64 {
+    const a: i64 = 10;
+    const b: i64 = 3;
     return a - b;
 }

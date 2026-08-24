@@ -1,12 +1,12 @@
-struct Box { val: i32 }
+struct Box { val: i64 }
 extend Box {
-    pub fn set(self: &Box, v: i32) -> void {
+    pub fn set(self: &Box, v: i64) -> void {
         self.val = v;
     }
 }
 
 // expect_exit: 11
-fn main() -> i32 {
+fn main() -> i64 {
     var a = Box{ val: 0 };
     var b = Box{ val: 0 };
     {
