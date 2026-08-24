@@ -10,7 +10,7 @@
 #include <assert.h>
 #include <stdalign.h>
 
-#define RAYA_VERSION "0.7.7"
+#define RAYA_VERSION "0.8.0"
 
 extern bool g_dump_tokens;
 extern bool g_dump_ast;

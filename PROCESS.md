@@ -1,6 +1,6 @@
 # Raya Development Process
 
-**Version:** 0.9.0-target  
+**Version:** 0.9.0-target
 **Status:** Frontend complete. Backend and safety architecture in progress.
 
 ---
@@ -99,5 +99,19 @@ Source (.raya) → Lexer → Parser → Sema → C11 Emitter → Host cc → Bin
 | Integration | 0 | 10+ (end-to-end compile + run) |
 
 ---
+
+## Priority Ranking
+
+| # | Gap                                  | Blocks Adoption?                   | Effort |
+| - | ------------------------------------ | ---------------------------------- | ------ |
+| 1 | **Multi-file builds**                | 🔴 Yes — can't write real programs | 1 week |
+| 2 | **Source-level debugging (`#line`)** | 🟡 High — debugging is essential   | 2 days |
+| 3 | **Test runner**                      | 🟡 High — no tests, no trust       | 3 days |
+| 4 | **Varargs FFI**                      | 🟡 High — can't call `printf`      | 2 days |
+| 5 | **Cross-compilation**                | 🟢 Medium — needed for embedded    | 3 days |
+| 6 | **String stdlib**                    | 🟢 Medium — painful without it     | 1 week |
+| 7 | **Comptime sandboxing**              | 🟢 Low — edge case                 | 2 days |
+
+
 
 > Ship the frontend. Harden the boundary. Then decide how fast.

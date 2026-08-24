@@ -145,7 +145,7 @@ test-codegen: all
 # All tests
 # ============================================================================
 
-test: test-lexer test-parser test-sema test-cogen
+test: test-lexer test-parser test-sema test-codegen
 
 # ============================================================================
 # Debug build

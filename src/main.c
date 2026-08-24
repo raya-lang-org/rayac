@@ -28,7 +28,7 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --test-parser    Output AST kinds only (for tests)\n");
     fprintf(stderr, "  --check          Run semantic analysis\n");
     fprintf(stderr, "  --test-sema      Output sema errors only (for tests)\n");
-    fprintf(stderr, "  --build      vvutput sema errors only (for tests)\n");
+    fprintf(stderr, "  --build          Compile to executable\n");
     fprintf(stderr, "  -h, --help       Show this help\n");
     fprintf(stderr, "  -v, --version    Show version\n");
 }
