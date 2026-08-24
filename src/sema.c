@@ -466,7 +466,6 @@ static void sema_check_fn_body(Sema *s, AstNode *fn)
     s->current_scope = fn_scope;
     s->current_fn = fn;
     s->current_fn_has_return = false;
-    /* FIX #5: unsafe fn sets in_unsafe */
     s->in_unsafe = fn->fn_decl.is_unsafe;
 
     for (size_t i = 0; i < fn->fn_decl.generic_params.count; i++) {
@@ -478,6 +477,9 @@ static void sema_check_fn_body(Sema *s, AstNode *fn)
     for (size_t i = 0; i < fn->fn_decl.params.count; i++) {
         AstNode *p = fn->fn_decl.params.items[i];
         if (p->param_decl.is_self) {
+            if (!s->current_self_type) {
+                sema_report(s, p->loc, "'self' parameter only allowed in methods");
+            }
             SType *self_type = p->param_decl.type ? sema_resolve_type(s, p->param_decl.type) : (s->current_self_type ? s->current_self_type : st_void(s->types));
             s->current_self_type = self_type;
             Symbol *sym = symbol_new(s->arena, SYM_VAR, sv_from_cstr("self"), self_type, p);
@@ -607,7 +609,14 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
         case AST_DEFER_STMT:
             sema_check_expr(s, stmt->defer_stmt.expr);
             return st_void(s->types);
-        case AST_ERRDEFER_STMT:
+        case AST_ERRDEFER_STMT: {
+            if (!s->current_fn_return_type || s->current_fn_return_type->kind != ST_ERROR_UNION) {
+                sema_report(s, stmt->loc,
+                    "'errdefer' only valid in functions returning error unions");
+            }
+            sema_check_block(s, stmt->errdefer_stmt.body);
+            return st_void(s->types);
+        }
         case AST_BREAK_STMT:
             if (!s->current_fn_return_type || s->current_fn_return_type->kind != ST_ERROR_UNION) {
                 sema_report(s, stmt->loc,
@@ -620,8 +629,15 @@ SType *sema_check_stmt(Sema *s, AstNode *stmt)
             sema_check_expr(s, stmt->match_stmt.expr);
             return st_void(s->types);
         case AST_ASSIGN_STMT: {
-            SType *lhs = sema_check_expr(s, stmt->assign_stmt.lhs);
+         SType *lhs = sema_check_expr(s, stmt->assign_stmt.lhs);
             SType *rhs = sema_check_expr(s, stmt->assign_stmt.rhs);
+            if (stmt->assign_stmt.lhs->kind == AST_IDENTIFIER) {
+                Symbol *sym = stmt->assign_stmt.lhs->identifier.sym;
+                if (sym && sym->kind == SYM_CONST) {
+                    sema_report(s, stmt->loc, "cannot assign to constant '%.*s'",
+                        (int)sym->name.len, sym->name.data);
+                }
+            }
             if (!st_can_coerce(rhs, lhs))
                 sema_report(s, stmt->loc, "cannot assign '%s' to '%s'", st_name(rhs), st_name(lhs));
             return st_void(s->types);
@@ -653,6 +669,14 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
             expr->sema_type = st_bool(s->types);
             return expr->sema_type;
         case AST_IDENTIFIER: {
+           if (sv_eq_cstr(expr->identifier.name, "self")) {
+                if (!s->current_self_type) {
+                    sema_report(s, expr->loc, "'self' can only be used inside methods");
+                    expr->sema_type = st_void(s->types);
+                    expr->identifier.sym = NULL;
+                    return expr->sema_type;
+                }
+            }
             Symbol *sym = scope_lookup(s->current_scope, expr->identifier.name);
             if (!sym) {
                 sema_report(s, expr->loc, "use of undeclared identifier '%.*s'", SV_ARG(expr->identifier.name));

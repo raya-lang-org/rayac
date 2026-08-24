@@ -164,11 +164,10 @@ bool st_is_numeric(SType *t) { return t->kind == ST_INT || t->kind == ST_FLOAT; 
 
 bool st_can_coerce(SType *from, SType *to) {
     if (st_eq(from, to)) return true;
-    if (from->kind == ST_INT && to->kind == ST_INT) {
-        if (from->as.integer.bits == 64) return true;
+    if (from->as.integer.bits == 64) {
         return from->as.integer.is_signed == to->as.integer.is_signed && from->as.integer.bits <= to->as.integer.bits;
     }
-    if (from->kind == ST_FLOAT && to->kind == ST_FLOAT) {
+    if (from->kind  && to->kind == ST_FLOAT) {
         if (from->as.floating.bits == 64) return true;
         return from->as.floating.bits <= to->as.floating.bits;
     }
