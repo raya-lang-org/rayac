@@ -1,1 +1,3 @@
-ok
+return type mismatch: expected 'f32', found 'f64'
+field 'x' expects 'f32', got 'f64'
+field 'y' expects 'f32', got 'f64'

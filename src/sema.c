@@ -676,7 +676,7 @@ SType *sema_check_expr(Sema *s, AstNode *expr)
                     expr->identifier.sym = NULL;
                     return expr->sema_type;
                 }
-            }
+            } //  TODO : its here !!
             Symbol *sym = scope_lookup(s->current_scope, expr->identifier.name);
             if (!sym) {
                 sema_report(s, expr->loc, "use of undeclared identifier '%.*s'", SV_ARG(expr->identifier.name));

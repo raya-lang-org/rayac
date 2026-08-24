@@ -1,4 +1,4 @@
 fn main() -> void {
-    var x: i32 = 0;
-    x = 3.14;
+    var x: i64 = 0;
+    x = 3.14; // it should be failed because return was void x = is float
 }

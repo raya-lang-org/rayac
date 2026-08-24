@@ -1,3 +1,9 @@
+field 'x' expects 'f32', got 'f64'
+field 'y' expects 'f32', got 'f64'
+field 'z' expects 'f32', got 'f64'
+field 'x' expects 'f32', got 'f64'
+field 'y' expects 'f32', got 'f64'
+field 'z' expects 'f32', got 'f64'
 method 'add' expects 2 argument(s) (including self), got 1
 method 'add' expects 2 argument(s) (including self), got 3
 argument 1: expected '&Vec3', found 'i64'

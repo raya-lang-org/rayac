@@ -1,1 +1,2 @@
+field 'val' expects 'i32', got 'i64'
 no method 'get' on type 'B'

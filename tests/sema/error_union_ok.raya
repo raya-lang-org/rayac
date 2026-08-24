@@ -1,13 +1,13 @@
-struct MyError { code: i32 }
+struct MyError { code: i64 }
 
-fn may_fail(x: i32) -> MyError!i32 {
+fn may_fail(x: i32 as i64) -> MyError!i64 {
     if (x < 0) {
         return MyError{ code: 1 };
     }
     return x * 2;
 }
 
-fn main() -> MyError!i32 {
+fn main() -> MyError!i64 {
     const a = try may_fail(5);
     return a;
 }

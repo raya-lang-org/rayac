@@ -1,6 +1,7 @@
-struct MyError { code: i32 }
+struct MyError { code: i64 }
 
-fn may_fail(x: i32) -> MyError!i32 {
+/** TODO::notes if MyError!i32 for cast like this ? MyError!i32 as i32 its valid or not ? **/
+fn may_fail(x: i64) -> MyError!i64 {  
     if (x < 0) {
         return MyError{ code: 1 };
     }

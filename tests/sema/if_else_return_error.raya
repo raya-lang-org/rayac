@@ -1,4 +1,4 @@
-fn foo(cond: bool) -> i32 {
+fn foo(cond: bool) -> i64 {
     if cond { return 1; }
     else    { 2 }
 }

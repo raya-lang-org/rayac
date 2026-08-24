@@ -164,16 +164,24 @@ bool st_is_numeric(SType *t) { return t->kind == ST_INT || t->kind == ST_FLOAT; 
 
 bool st_can_coerce(SType *from, SType *to) {
     if (st_eq(from, to)) return true;
-    if (from->as.integer.bits == 64) {
-        return from->as.integer.is_signed == to->as.integer.is_signed && from->as.integer.bits <= to->as.integer.bits;
+
+    // Int to int: same signedness, same size or widening only
+    if (from->kind == ST_INT && to->kind == ST_INT) {
+        return from->as.integer.is_signed == to->as.integer.is_signed
+            && from->as.integer.bits <= to->as.integer.bits;
     }
-    if (from->kind  && to->kind == ST_FLOAT) {
-        if (from->as.floating.bits == 64) return true;
+
+    // Float to float: same size or widening only
+    if (from->kind == ST_FLOAT && to->kind == ST_FLOAT) {
         return from->as.floating.bits <= to->as.floating.bits;
     }
-    if (from->kind == ST_INT && to->kind == ST_INT && from->as.integer.bits == 64) return true;
-    if (from->kind == ST_FLOAT && to->kind == ST_FLOAT && from->as.floating.bits == 64) return true;
+
+    // Int to float: always allow (widening)
     if (from->kind == ST_INT && to->kind == ST_FLOAT) return true;
+
+    // Float to int: NEVER allow implicit (strict typing)
+    // REMOVED: if (from->kind == ST_FLOAT && to->kind == ST_INT) return true;
+
     if (to->kind == ST_OPTIONAL && st_can_coerce(from, to->as.optional.base)) return true;
     if (from->kind == ST_REFERENCE && to->kind == ST_REFERENCE)
         return !from->as.reference.is_const && to->as.reference.is_const && st_eq(from->as.reference.base, to->as.reference.base);

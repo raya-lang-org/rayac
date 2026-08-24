@@ -1,4 +1,4 @@
-struct Node { val: i32 }
+struct Node { val: i64 }
 extend Node {
     pub fn next(self: &Node) -> &Node { return self; }
 }
