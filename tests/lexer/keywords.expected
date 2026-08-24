@@ -20,6 +20,7 @@ union
 struct
 unsafe
 noreturn
+type
 traits
 extend
 match
@@ -29,5 +30,4 @@ with
 undefined
 self
 Self
-int_literal
-intype
+in

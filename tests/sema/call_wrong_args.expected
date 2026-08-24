@@ -1,3 +1,4 @@
+return type mismatch: expected 'i32', found 'i64'
 function expects 2 argument(s), got 1
 function expects 2 argument(s), got 3
-argument 2: expected 'i32', found '[]const u8'
+argument 2: expected 'i64', found '[]const u8'

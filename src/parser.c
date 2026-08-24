@@ -760,10 +760,6 @@ TypeExpr *parser_parse_type(Parser *p)
         TypeExpr *success = parser_parse_type(p);
         return type_new_error_union(p->arena, primary, success, loc);
     }
-    if (parser_match(p, TOK_IDENT) || parser_match(p, TOK_SELF_TYPE)) {
-        StringView name = parser_previous(p)->text;
-        return type_new_named(p->arena, name, loc);
-    }
     return primary;
 }
 
