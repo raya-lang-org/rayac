@@ -10,7 +10,7 @@ typedef enum {
     TOK_MODULE, TOK_IMPORT, TOK_FN, TOK_PUB, TOK_CONST, TOK_VAR,
     TOK_COMPTIME, TOK_DEFER, TOK_ERRDEFER, TOK_TEST, TOK_RETURN,
     TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_TRY, TOK_BREAK,
-    TOK_CONTINUE, TOK_UNION, TOK_STRUCT, TOK_UNSAFE, TOK_NORETURN, TOK_IN, 
+    TOK_CONTINUE, TOK_UNION, TOK_STRUCT, TOK_UNSAFE, TOK_NORETURN, TOK_IN,
     TOK_TYPE, TOK_TRAITS, TOK_EXTEND, TOK_MATCH, TOK_ENUM,TOK_AS,TOK_WITH, TOK_UNDEFINED, TOK_SELF, TOK_CAP_SELF,
     TOK_INT_LITERAL, TOK_FLOAT_LITERAL, TOK_STRING_LITERAL, TOK_CHAR_LITERAL,
     TOK_TRUE, TOK_FALSE, TOK_NULL,
@@ -34,21 +34,24 @@ static inline const char* token_kind_name(TokenKind k) {
         "module", "import", "fn", "pub", "const", "var",
         "comptime", "defer", "errdefer", "test", "return",
         "if", "else", "while", "for", "try", "break",
-        "continue", "union", "struct", "unsafe", "noreturn", "in"
-        "type", "traits", "extend", "match", "enum","as", "with", "undefined","self", "Self",
-        "int_literal", "float_literal", "string_literal", "char_literal",
-        "true", "false", "null",
-        "identifier",
+        "continue", "union", "struct", "unsafe", "noreturn", "in",
+        "type", "traits", "extend", "match", "enum", "as", "with",
+        "undefined", "self", "Self",
+        "ident", "int_literal", "float_literal", "string_literal", "char_literal",
+        "bool_literal", "null_literal",
         "+", "-", "*", "/", "%",
-        "==", "!=", "<", ">", "<=", ">=", "_",
+        "==", "!=", "<", ">", "<=", ">=",
         "=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
         "&", "|", "^", "<<", ">>",
         "&&", "||", "!", "~",
-        ".", "..", "->", "=>", "::", "#",
-        "(", ")", "[", "]", "{", "}", ",", ";", ":", "?",
-        "EOF", "ERROR"
+        ".", "..", "->", "=>", ":", "::",
+        "(", ")", "[", "]", "{", "}",
+        ",", ";", "?", "#",
+        "error"
     };
-    return (k >= 0 && k < TOK_COUNT) ? names[k] : "UNKNOWN";
+    if (k == TOK_EOF) return "eof";
+    if (k < 0 || k >= (int)(sizeof(names)/sizeof(names[0]))) return "???";
+    return names[k];
 }
 
 typedef struct {
