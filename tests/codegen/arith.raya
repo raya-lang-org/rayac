@@ -1,6 +1,13 @@
 // expect_exit: 7
+
+
+extern fn raya_print(s: []const u8) -> void;
+
 fn main() -> i64 {
+
     const a: i64 = 10;
     const b: i64 = 3;
     return a - b;
+
+    raya_print("Hello from raya to c");
 }
